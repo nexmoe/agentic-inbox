@@ -162,6 +162,11 @@ export default function HomeRoute() {
 					)}
 				</div>
 
+				{accounts.length > 0 && <RouterLink to="/all/emails/inbox" className="mb-4 flex items-center gap-4 rounded-xl border border-kumo-line bg-kumo-base px-5 py-4 no-underline hover:bg-kumo-tint">
+					<div className="flex h-10 w-10 items-center justify-center rounded-full bg-kumo-fill"><EnvelopeIcon size={22} /></div>
+					<div><div className="text-sm font-semibold text-kumo-default">全部邮件</div><div className="text-sm text-kumo-subtle">统一查看 {accounts.length} 个邮箱</div></div>
+				</RouterLink>}
+
 				{isLoading ? (
 					<div className="flex justify-center py-20">
 						<Loader size="lg" />

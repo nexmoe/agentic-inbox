@@ -6,6 +6,7 @@ import { Badge, Button, Dialog, Input, Tooltip } from "@cloudflare/kumo";
 import {
 	ArchiveIcon,
 	CaretLeftIcon,
+	EnvelopeIcon,
 	FileIcon,
 	FolderIcon,
 	PaperPlaneTiltIcon,
@@ -15,11 +16,12 @@ import {
 	TrayIcon,
 } from "@phosphor-icons/react";
 import { useMemo, useState } from "react";
-import { NavLink, useNavigate, useParams } from "react-router";
+import { NavLink, useNavigate } from "react-router";
 import { Folders, SYSTEM_FOLDER_IDS } from "shared/folders";
 import { useCreateFolder, useFolders } from "~/queries/folders";
-import { useMailbox } from "~/queries/mailboxes";
+import { useMailbox, useMailboxes } from "~/queries/mailboxes";
 import { useUIStore } from "~/hooks/useUIStore";
+import { useActiveMailboxId } from "~/hooks/useActiveMailbox";
 
 const FOLDER_ICONS: Record<string, React.ReactNode> = {
 	[Folders.INBOX]: <TrayIcon size={18} weight="regular" />,
@@ -73,20 +75,21 @@ function FolderLink({
 	);
 }
 
-export default function Sidebar() {
-	const { mailboxId } = useParams<{ mailboxId: string }>();
+export default function Sidebar({ unified = false }: { unified?: boolean }) {
+	const mailboxId = useActiveMailboxId();
 	const navigate = useNavigate();
 	const { data: folders = [] } = useFolders(mailboxId);
 	const createFolderMutation = useCreateFolder();
-	const { startCompose, closeSidebar } = useUIStore();
+	const { startCompose, closeSidebar, closePanel, selectMailbox } = useUIStore();
 	const { data: currentMailbox } = useMailbox(mailboxId);
+	const { data: mailboxes = [] } = useMailboxes();
 	const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
 	const [newFolderName, setNewFolderName] = useState("");
 
 	const customFolders = useMemo(
 		() =>
-			folders.filter((f) => !(SYSTEM_FOLDER_IDS as readonly string[]).includes(f.id)),
-		[folders],
+			unified ? [] : folders.filter((f) => !(SYSTEM_FOLDER_IDS as readonly string[]).includes(f.id)),
+		[folders, unified],
 	);
 
 	const getUnreadCount = (folderId: string) => {
@@ -137,11 +140,16 @@ export default function Sidebar() {
 				</button>
 				<div className="px-1">
 					<div className="text-base font-semibold text-kumo-default truncate">
-						{displayName}
+						{unified ? "全部邮箱" : displayName}
 					</div>
 					<div className="text-sm text-kumo-subtle truncate mt-0.5">
-						{currentMailbox?.email || mailboxId}
+						{unified ? `${mailboxes.length} 个邮箱` : currentMailbox?.email || mailboxId}
 					</div>
+					{unified && mailboxes.length > 0 && <label className="block mt-3 text-xs text-kumo-subtle">发件邮箱
+						<select aria-label="发件邮箱" value={mailboxId ?? ""} onChange={(event) => { closePanel(); selectMailbox(event.target.value); }} className="mt-1 w-full rounded-md border border-kumo-line bg-kumo-base px-2 py-1.5 text-sm text-kumo-default">
+							{mailboxes.map((mailbox) => <option key={mailbox.id} value={mailbox.id}>{mailbox.email}</option>)}
+						</select>
+					</label>}
 				</div>
 			</div>
 
@@ -151,6 +159,7 @@ export default function Sidebar() {
 					variant="primary"
 					icon={<PencilSimpleIcon size={16} />}
 					onClick={() => startCompose()}
+					disabled={!mailboxId}
 					className="w-full"
 				>
 					Compose
@@ -159,13 +168,14 @@ export default function Sidebar() {
 
 			{/* Navigation */}
 			<nav className="flex-1 overflow-y-auto px-2 space-y-0.5">
+				{!unified && <FolderLink to="/all/emails/inbox" icon={<EnvelopeIcon size={18} />} label="全部邮件" onClick={handleNavClick} />}
 				{SYSTEM_FOLDER_LINKS.map((folder) => (
 					<FolderLink
 						key={folder.id}
-						to={`/mailbox/${mailboxId}/emails/${folder.id}`}
+						to={unified ? `/all/emails/${folder.id}` : `/mailbox/${mailboxId}/emails/${folder.id}`}
 						icon={FOLDER_ICONS[folder.id]}
 						label={folder.label}
-						unreadCount={getUnreadCount(folder.id)}
+						unreadCount={unified ? undefined : getUnreadCount(folder.id)}
 						onClick={handleNavClick}
 					/>
 				))}
@@ -202,7 +212,7 @@ export default function Sidebar() {
 				)}
 
 				{/* Add folder button when no custom folders */}
-				{customFolders.length === 0 && (
+				{!unified && customFolders.length === 0 && (
 					<div className="pt-5">
 						<div className="flex items-center justify-between px-3 mb-1.5">
 							<span className="text-xs uppercase tracking-wider font-semibold text-kumo-subtle">

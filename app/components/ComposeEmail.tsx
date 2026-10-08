@@ -5,15 +5,14 @@
 import { Banner, Button, Dialog, Input, Text } from "@cloudflare/kumo";
 import { FloppyDiskIcon, PaperPlaneTiltIcon } from "@phosphor-icons/react";
 import { useParams } from "react-router";
+import { useActiveMailboxId } from "~/hooks/useActiveMailbox";
 import { useComposeForm } from "~/hooks/useComposeForm";
 import RichTextEditor from "./RichTextEditor";
 import { useUIStore } from "~/hooks/useUIStore";
 
 export default function ComposeEmail() {
-	const { mailboxId, folder } = useParams<{
-		mailboxId: string;
-		folder: string;
-	}>();
+	const { folder } = useParams<{ folder: string }>();
+	const mailboxId = useActiveMailboxId();
 	
 	const { isComposeModalOpen, closeComposeModal } = useUIStore();
 

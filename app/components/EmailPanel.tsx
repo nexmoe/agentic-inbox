@@ -5,6 +5,7 @@
 import { useKumoToastManager } from "@cloudflare/kumo";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router";
+import { useActiveMailboxId } from "~/hooks/useActiveMailbox";
 import { Folders } from "shared/folders";
 import EmailPanelDialogs from "~/components/email-panel/EmailPanelDialogs";
 import EmailPanelHeader from "~/components/email-panel/EmailPanelHeader";
@@ -31,7 +32,8 @@ function EmailPanelSkeleton() {
 }
 
 export default function EmailPanel({ emailId }: { emailId: string }) {
-	const { mailboxId, folder } = useParams<{ mailboxId: string; folder: string }>();
+	const { folder } = useParams<{ folder: string }>();
+	const mailboxId = useActiveMailboxId();
 	const { data: email } = useEmail(mailboxId, emailId) as { data?: Email };
 	const { data: threadRepliesRaw, isError: threadError } = useThreadReplies(mailboxId, email?.thread_id);
 	const updateEmail = useUpdateEmail();

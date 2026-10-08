@@ -6,7 +6,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "~/services/api";
 import type { Email } from "~/types";
 import { queryKeys } from "./keys";
-import type { EmailSummary } from "../../shared/email-summary";
+import type { EmailSummaryState } from "../../shared/email-summary";
 
 // ---------- Types ----------
 
@@ -16,6 +16,15 @@ interface EmailListResponse {
 }
 
 // ---------- Queries ----------
+
+export function useUnifiedEmails(folder: string, cursor: string, enabled: boolean) {
+	return useQuery({
+		queryKey: queryKeys.unifiedEmails.list(folder, cursor),
+		queryFn: ({ signal }) => api.listUnifiedEmails({ folder, cursor, limit: "25" }, { signal }),
+		enabled,
+		refetchInterval: cursor ? false : 30_000,
+	});
+}
 
 export function useEmails(
 	mailboxId: string | undefined,
@@ -98,16 +107,17 @@ export function useEmailSummary(
 	revision: string,
 	enabled: boolean,
 ) {
-	return useQuery<EmailSummary>({
+	return useQuery<EmailSummaryState>({
 		queryKey: mailboxId
 			? queryKeys.emailSummaries.detail(mailboxId, email.thread_id || email.id, revision)
 			: ["email-summaries", "_disabled"],
-		queryFn: ({ signal }) => api.summarizeEmail(mailboxId!, email.id, { signal }),
+		queryFn: ({ signal }) => api.getEmailSummary(mailboxId!, email.id, { signal }),
 		enabled: !!mailboxId && enabled,
-		staleTime: Infinity,
+		staleTime: (query) => query.state.data?.status === "ready" ? Infinity : 0,
 		retry: false,
 		refetchOnWindowFocus: false,
 		refetchOnReconnect: false,
+		refetchInterval: (query) => query.state.data?.status === "pending" ? 2_000 : false,
 	});
 }
 
@@ -117,6 +127,7 @@ export function useEmailSummary(
 function useInvalidateEmailData() {
 	const qc = useQueryClient();
 	return (mailboxId: string) => {
+		qc.invalidateQueries({ queryKey: queryKeys.unifiedEmails.all });
 		qc.invalidateQueries({ queryKey: ["emails", mailboxId] });
 		qc.invalidateQueries({
 			queryKey: queryKeys.folders.list(mailboxId),
@@ -149,20 +160,19 @@ export function useUpdateEmail() {
 			// Only target list queries (3rd key element is an object = params),
 			// NOT detail queries (string = emailId) or thread queries.
 			const isListQuery = (query: { queryKey: readonly unknown[] }) =>
-				query.queryKey[0] === "emails" &&
-				query.queryKey[1] === mailboxId &&
-				typeof query.queryKey[2] === "object" &&
-				query.queryKey[2] !== null;
+				query.queryKey[0] === "unified-emails" || (
+					query.queryKey[0] === "emails" &&
+					query.queryKey[1] === mailboxId &&
+					typeof query.queryKey[2] === "object" &&
+					query.queryKey[2] !== null);
 
 			// Cancel in-flight list queries so they don't overwrite our optimistic update
 			await qc.cancelQueries({
-				queryKey: ["emails", mailboxId],
 				predicate: isListQuery,
 			});
 
 			// Snapshot current email list caches for rollback
 			const listQueries = qc.getQueriesData<{ emails: Email[]; totalCount: number }>({
-				queryKey: ["emails", mailboxId],
 				predicate: isListQuery,
 			});
 
@@ -172,7 +182,7 @@ export function useUpdateEmail() {
 				qc.setQueryData(key, {
 					...cached,
 					emails: cached.emails.map((e) =>
-						e.id === id ? { ...e, ...(data as Partial<Email>) } : e,
+						e.id === id && (!e.mailbox_id || e.mailbox_id === mailboxId) ? { ...e, ...(data as Partial<Email>) } : e,
 					),
 				});
 			}
@@ -198,6 +208,7 @@ export function useUpdateEmail() {
 			}
 		},
 		onSettled: (_data, _err, { mailboxId }) => {
+			qc.invalidateQueries({ queryKey: queryKeys.unifiedEmails.all });
 			// Always refetch to ensure server truth
 			qc.invalidateQueries({ queryKey: ["emails", mailboxId] });
 			qc.invalidateQueries({
@@ -216,6 +227,7 @@ export function useMarkThreadRead() {
 		}: { mailboxId: string; threadId: string }) =>
 			api.markThreadRead(mailboxId, threadId),
 		onSuccess: (_data, { mailboxId }) => {
+			qc.invalidateQueries({ queryKey: queryKeys.unifiedEmails.all });
 			qc.invalidateQueries({ queryKey: ["emails", mailboxId] });
 			qc.invalidateQueries({
 				queryKey: queryKeys.folders.list(mailboxId),

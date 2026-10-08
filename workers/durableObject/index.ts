@@ -9,6 +9,8 @@ import type { SQL } from "drizzle-orm";
 import * as schema from "../db/schema";
 import { Folders } from "../../shared/folders";
 import type { Env } from "../types";
+import type { UnifiedEmailCursor } from "../../shared/unified-inbox";
+import { unifiedEmailsQuery } from "../lib/unified-inbox";
 import { applyMigrations, mailboxMigrations } from "./migrations";
 
 /**
@@ -110,6 +112,17 @@ export class MailboxDO extends DurableObject<Env> {
 	}
 
 	// ── Email CRUD (Drizzle) ───────────────────────────────────────
+
+	/** Keyset pagination avoids downloading earlier pages from every mailbox. */
+	async getUnifiedEmails(folder: string, mailboxId: string, rawLimit: number, cursor?: UnifiedEmailCursor) {
+		const query = unifiedEmailsQuery(folder, mailboxId, rawLimit, cursor);
+		const emails = [...this.ctx.storage.sql.exec(query.sql, ...query.params)];
+		return emails.map((email) => ({
+			...email, id: String(email.id), subject: String(email.subject ?? ""),
+			sender: String(email.sender ?? ""), recipient: String(email.recipient ?? ""),
+			date: String(email.date ?? ""), read: !!email.read, starred: !!email.starred,
+		}));
+	}
 
 	async getEmails(options: GetEmailsOptions = {}) {
 		const {

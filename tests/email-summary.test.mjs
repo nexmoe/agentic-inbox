@@ -47,6 +47,18 @@ test("reuses a persisted summary across selected messages and Agent restarts", a
 	assert.equal(f.calls.length, 1);
 });
 
+test("opening details only reads summaries saved by background work and never triggers AI", async () => {
+	const f = fixture();
+	assert.equal(await f.service.getSaved("first"), undefined);
+	assert.equal(f.calls.length, 0);
+	const summary = await f.service.summarize("first");
+	assert.deepEqual(await f.createService().getSaved("first"), summary);
+	assert.equal(f.calls.length, 1);
+	f.state.messages.push(message("reply", { date: "2026-10-10T10:00:00Z" }));
+	assert.equal(await f.service.getSaved("first"), undefined);
+	assert.equal(f.calls.length, 1);
+});
+
 test("marking read, starring, or moving an email does not spend another model call", async () => {
 	const f = fixture();
 	await f.service.summarize("first");

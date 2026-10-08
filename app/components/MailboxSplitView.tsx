@@ -5,6 +5,7 @@
 import type { ReactNode } from "react";
 import ComposePanel from "~/components/ComposePanel";
 import EmailPanel from "~/components/EmailPanel";
+import { useActiveMailboxId } from "~/hooks/useActiveMailbox";
 
 interface MailboxSplitViewProps {
 	selectedEmailId: string | null;
@@ -18,6 +19,8 @@ export default function MailboxSplitView({
 	children,
 }: MailboxSplitViewProps) {
 	const isPanelOpen = selectedEmailId !== null || isComposing;
+	const mailboxId = useActiveMailboxId();
+	const panelKey = `${mailboxId}:${selectedEmailId}`;
 
 	return (
 		<div className="flex h-full">
@@ -38,11 +41,11 @@ export default function MailboxSplitView({
 						<div className="flex flex-col h-full overflow-y-auto">
 							<ComposePanel />
 							<div className="border-t border-kumo-line">
-								<EmailPanel emailId={selectedEmailId} />
+								<EmailPanel key={panelKey} emailId={selectedEmailId} />
 							</div>
 						</div>
 					) : selectedEmailId ? (
-						<EmailPanel emailId={selectedEmailId} />
+						<EmailPanel key={panelKey} emailId={selectedEmailId} />
 					) : null}
 				</div>
 			)}
