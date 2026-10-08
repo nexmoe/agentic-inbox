@@ -16,19 +16,15 @@ Read the blog post to learn more about Cloudflare Email Service and how to use i
 
 ## How to setup
 
-**Important**: Clicking the 'Deploy to Cloudflare' button is only one part of the setup. You must follow the **After deploying** steps as well. For a full step-by-step guide with screenshots, refer to this comment: 
-https://github.com/cloudflare/agentic-inbox/issues/4#issuecomment-4269118513
+Use the cf CLI workflow in **Getting Started** below. The application also needs Cloudflare Access and Email Routing.
 
 ### To set up
 
-1. Deploy to Cloudflare. The deploy flow will automatically provision R2, Durable Objects, and Workers AI. You'll be prompted for **DOMAINS**, which is the domain (yourdomain.com) you want to receive emails for (email@yourdomain.com).
-
-     [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/nexmoe/agentic-inbox)
-
+1. Configure `.cloudflare/deployment.json` and deploy with `npm run deploy`. cf provisions the configured R2 bucket and Durable Objects.
 2. **Configure Cloudflare Access** -- Enable [one-click Cloudflare Access](https://developers.cloudflare.com/changelog/post/2025-10-03-one-click-access-for-workers/) on your Worker under Settings > Domains & Routes. The modal will show your `POLICY_AUD` and `TEAM_DOMAIN` values. `TEAM_DOMAIN` can be either your Access team URL or the full `.../cdn-cgi/access/certs` URL. **You must set these as secrets for your Worker.**
-3. **Set up Email Routing** -- In the Cloudflare dashboard, go to your domain > Email Routing and create a catch-all rule that forwards to this Worker
-4. **Enable Email Service** -- The worker needs the `send_email` binding to send outbound emails. See [Email Service docs](https://developers.cloudflare.com/email-routing/email-workers/send-email-workers/)
-5. **Create a mailbox** -- Visit your deployed app and create a mailbox for any address on your domain (e.g. `hello@example.com`)
+3. **Set up Email Routing** -- Enable routing for each mail domain and point rules for your configured addresses to this Worker. Verify any forwarding destinations.
+4. **Create a mailbox** -- Visit your deployed app and create mailboxes for the addresses listed in `emailAddresses`.
+5. **Optional sending** -- Configure [Email Service](https://developers.cloudflare.com/email-service/) if you need outbound mail. Receiving, forwarding, and summaries work independently.
 
 ### Troubleshooting Access
 
@@ -41,7 +37,7 @@ https://github.com/cloudflare/agentic-inbox/issues/4#issuecomment-4269118513
 
 - **Full email client** — Send and receive emails via Cloudflare Email Routing with a rich text composer, reply/forward threading, folder organization, search, and attachments
 - **Per-mailbox isolation** — Each mailbox runs in its own Durable Object with SQLite storage and R2 for attachments
-- **Built-in AI agent** — Side panel with 9 email tools for reading, searching, drafting, and sending
+- **Built-in AI agent** — Side panel with 9 email tools for reading, searching, drafting, and organizing
 - **Auto-draft on new email** — Agent automatically reads inbound emails and generates draft replies, always requiring explicit confirmation before sending
 - **Auto-summary on open** — Opening an email detail triggers the mailbox Agent to summarize the full body and conversation in Chinese. Successful summaries are cached and refresh when the conversation changes. Failed requests can be retried.
 - **Configurable and persistent** — Custom system prompts per mailbox, persistent chat history, streaming markdown responses, and tool call visibility
@@ -57,6 +53,9 @@ https://github.com/cloudflare/agentic-inbox/issues/4#issuecomment-4269118513
 
 ```bash
 npm install
+mkdir -p .cloudflare
+cp deployment.example.json .cloudflare/deployment.json
+# Edit the local deployment settings before starting or deploying.
 npm run dev
 ```
 
