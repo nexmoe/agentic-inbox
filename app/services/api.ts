@@ -3,7 +3,8 @@
 //     https://opensource.org/licenses/Apache-2.0
 
 import type { Email, Folder, Mailbox } from "~/types";
-import type { EmailSummary } from "../../shared/email-summary";
+import type { EmailSummary, EmailSummaryState } from "../../shared/email-summary";
+import type { UnifiedEmailPage } from "../../shared/unified-inbox";
 
 const REQUEST_TIMEOUT_MS = 30_000;
 
@@ -112,6 +113,8 @@ const api = {
 		del<void>(`/api/v1/mailboxes/${mailboxId}`),
 
 	// Emails
+	listUnifiedEmails: (params: Record<string, string>, opts?: { signal?: AbortSignal }) =>
+		get<UnifiedEmailPage<Email>>("/api/v1/emails", { params, signal: opts?.signal }),
 	listEmails: (mailboxId: string, params: Record<string, string>, opts?: { signal?: AbortSignal }) =>
 		get<EmailListResponse | Email[]>(`/api/v1/mailboxes/${mailboxId}/emails`, { params, signal: opts?.signal }),
 	sendEmail: (mailboxId: string, email: unknown) =>
@@ -120,6 +123,8 @@ const api = {
 		get<Email>(`/api/v1/mailboxes/${mailboxId}/emails/${id}`, { signal: opts?.signal }),
 	summarizeEmail: (mailboxId: string, id: string, opts?: { signal?: AbortSignal }) =>
 		post<EmailSummary>(`/api/v1/mailboxes/${mailboxId}/emails/${id}/summary`, undefined, opts),
+	getEmailSummary: (mailboxId: string, id: string, opts?: { signal?: AbortSignal }) =>
+		get<EmailSummaryState>(`/api/v1/mailboxes/${mailboxId}/emails/${id}/summary`, opts),
 	updateEmail: (mailboxId: string, id: string, data: unknown) =>
 		put<Email>(`/api/v1/mailboxes/${mailboxId}/emails/${id}`, data),
 	deleteEmail: (mailboxId: string, id: string) =>

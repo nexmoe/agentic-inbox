@@ -5,13 +5,14 @@
 import { Button, Input, Tooltip } from "@cloudflare/kumo";
 import { GearSixIcon, ListIcon, MagnifyingGlassIcon, RobotIcon, XIcon } from "@phosphor-icons/react";
 import { type KeyboardEvent, useEffect, useState } from "react";
-import { useLocation, useNavigate, useParams, useSearchParams } from "react-router";
+import { useLocation, useNavigate, useSearchParams } from "react-router";
 import { useUIStore } from "~/hooks/useUIStore";
+import { useActiveMailboxId } from "~/hooks/useActiveMailbox";
 
-export default function Header() {
+export default function Header({ unified = false }: { unified?: boolean }) {
 	const [searchQuery, setSearchQuery] = useState("");
 	const [isSearchExpanded, setIsSearchExpanded] = useState(false);
-	const { mailboxId } = useParams<{ mailboxId: string }>();
+	const mailboxId = useActiveMailboxId();
 	const navigate = useNavigate();
 	const location = useLocation();
 	const [searchParams] = useSearchParams();
@@ -69,7 +70,7 @@ export default function Header() {
 			/>
 
 			{/* Search - full on desktop, collapsible on mobile */}
-			<div
+			{unified ? <span className="text-sm font-semibold text-kumo-default">全部邮件</span> : <div
 				className={`flex-1 max-w-lg transition-all flex items-center gap-1 ${
 					isSearchExpanded ? "flex" : "hidden md:flex"
 				}`}
@@ -103,10 +104,10 @@ export default function Header() {
 						aria-label="Search"
 					/>
 				</Tooltip>
-			</div>
+			</div>}
 
 			{/* Search toggle button - mobile only, hidden when search is expanded */}
-			{!isSearchExpanded && (
+			{!unified && !isSearchExpanded && (
 				<Button
 					variant="ghost"
 					shape="square"
@@ -125,6 +126,7 @@ export default function Header() {
 						shape="square"
 						icon={<RobotIcon size={20} />}
 						onClick={toggleAgentPanel}
+						disabled={!mailboxId}
 						aria-label="Toggle agent panel"
 						className="hidden lg:inline-flex"
 					/>
@@ -142,6 +144,7 @@ export default function Header() {
 							)
 						}
 						aria-label="Settings"
+						disabled={!mailboxId}
 					/>
 				</Tooltip>
 			</div>

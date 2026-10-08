@@ -20,6 +20,10 @@ export const queryKeys = {
 		detail: (mailboxId: string, threadId: string, revision: string) =>
 			["email-summaries", mailboxId, threadId, revision] as const,
 	},
+	unifiedEmails: {
+		all: ["unified-emails"] as const,
+		list: (folder: string, cursor: string) => ["unified-emails", folder, cursor] as const,
+	},
 	folders: {
 		list: (mailboxId: string) => ["folders", mailboxId] as const,
 	},

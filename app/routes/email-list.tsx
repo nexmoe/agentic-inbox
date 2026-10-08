@@ -28,10 +28,12 @@ import {
 	useEmails,
 	useMarkThreadRead,
 	useUpdateEmail,
+	useUnifiedEmails,
 } from "~/queries/emails";
 import { useFolders } from "~/queries/folders";
 import { queryKeys } from "~/queries/keys";
 import { useUIStore } from "~/hooks/useUIStore";
+import { useActiveMailboxId } from "~/hooks/useActiveMailbox";
 import type { Email } from "~/types";
 
 const PAGE_SIZE = 25;
@@ -140,19 +142,19 @@ function FolderEmptyState({
 	);
 }
 
-export default function EmailListRoute() {
-	const { mailboxId, folder } = useParams<{
-		mailboxId: string;
-		folder: string;
-	}>();
+export default function EmailListRoute({ unified = false }: { unified?: boolean }) {
+	const { folder } = useParams<{ folder: string }>();
+	const mailboxId = useActiveMailboxId();
 	const {
 		selectedEmailId,
 		isComposing,
 		selectEmail,
 		closePanel,
 		startCompose,
+		selectMailbox,
 	} = useUIStore();
 	const [page, setPage] = useState(1);
+	const [cursors, setCursors] = useState<string[]>([]);
 
 	const queryClient = useQueryClient();
 	const updateEmail = useUpdateEmail();
@@ -168,10 +170,11 @@ export default function EmailListRoute() {
 		[folder, page],
 	);
 
-	const {
-		data: emailData,
-		isFetching: isRefreshing,
-	} = useEmails(mailboxId, params, { refetchInterval: 30_000 });
+	const mailboxQuery = useEmails(mailboxId, params, { enabled: !unified, refetchInterval: 30_000 });
+	const unifiedQuery = useUnifiedEmails(folder || Folders.INBOX, cursors.at(-1) || "", unified);
+	const activeQuery = unified ? unifiedQuery : mailboxQuery;
+	const emailData = activeQuery.data;
+	const isRefreshing = activeQuery.isFetching;
 
 	const emails = emailData?.emails ?? [];
 	const totalCount = emailData?.totalCount ?? 0;
@@ -190,38 +193,47 @@ export default function EmailListRoute() {
 	const prevFolderRef = useRef<string | undefined>(undefined);
 
 	useEffect(() => {
-		const folderChanged = prevFolderRef.current !== `${mailboxId}/${folder}`;
-		prevFolderRef.current = `${mailboxId}/${folder}`;
+		const identity = `${unified ? "all" : mailboxId}/${folder}`;
+		const folderChanged = prevFolderRef.current !== identity;
+		prevFolderRef.current = identity;
 
 		if (folderChanged) {
 			closePanel();
 			setPage(1);
+			setCursors([]);
 		}
-	}, [mailboxId, folder, closePanel]);
+	}, [mailboxId, folder, unified, closePanel]);
 
 	const toggleStar = (e: React.MouseEvent, email: Email) => {
 		e.preventDefault();
 		e.stopPropagation();
-		if (mailboxId)
+		const targetMailboxId = email.mailbox_id || mailboxId;
+		if (targetMailboxId)
 			updateEmail.mutate({
-				mailboxId,
+				mailboxId: targetMailboxId,
 				id: email.id,
 				data: { starred: !email.starred },
 			});
 	};
 
-	const handleDelete = (e: React.MouseEvent, emailId: string) => {
+	const handleDelete = (e: React.MouseEvent, email: Email) => {
 		e.preventDefault();
 		e.stopPropagation();
-		if (mailboxId) {
+		const targetMailboxId = email.mailbox_id || mailboxId;
+		if (targetMailboxId) {
 			const confirmed = window.confirm("Are you sure you want to delete this email?");
 			if (!confirmed) return;
-			deleteEmail.mutate({ mailboxId, id: emailId });
-			if (selectedEmailId === emailId) closePanel();
+			deleteEmail.mutate({ mailboxId: targetMailboxId, id: email.id });
+			if (selectedEmailId === email.id && mailboxId === targetMailboxId) closePanel();
 		}
 	};
 
 	const handleRefresh = () => {
+		if (unified) {
+			setCursors([]);
+			queryClient.invalidateQueries({ queryKey: queryKeys.unifiedEmails.all });
+			return;
+		}
 		if (mailboxId) {
 			queryClient.invalidateQueries({ queryKey: ["emails", mailboxId] });
 			queryClient.invalidateQueries({
@@ -239,16 +251,18 @@ export default function EmailListRoute() {
 	};
 
 	const handleRowClick = (email: Email) => {
+		const targetMailboxId = email.mailbox_id || mailboxId;
+		if (unified && targetMailboxId) selectMailbox(targetMailboxId);
 		selectEmail(email.id);
-		if (mailboxId && hasUnread(email)) {
+		if (targetMailboxId && hasUnread(email)) {
 			if (email.thread_id && email.thread_count && email.thread_count > 1) {
 				markThreadRead.mutate({
-					mailboxId,
+					mailboxId: targetMailboxId,
 					threadId: email.thread_id,
 				});
 			} else {
 				updateEmail.mutate({
-					mailboxId,
+					mailboxId: targetMailboxId,
 					id: email.id,
 					data: { read: true },
 				});
@@ -281,7 +295,7 @@ export default function EmailListRoute() {
 					<div className="flex items-center gap-1">
 						{totalCount > 0 && (
 							<span className="text-sm text-kumo-subtle mr-2 hidden sm:inline">
-								{totalCount} conversation{totalCount !== 1 ? "s" : ""}
+								{unified ? `${totalCount} 封邮件` : `${totalCount} conversation${totalCount !== 1 ? "s" : ""}`}
 							</span>
 						)}
 						<Tooltip
@@ -309,16 +323,18 @@ export default function EmailListRoute() {
 
 				{/* Email rows */}
 				<div className="flex-1 overflow-y-auto">
-				{isRefreshing && emails.length === 0 ? (
+				{activeQuery.isError ? (
+					<div className="p-6 text-sm text-kumo-subtle" role="alert"><p>暂时无法加载邮件。</p><Button size="sm" variant="secondary" className="mt-3" onClick={handleRefresh}>重试</Button></div>
+				) : isRefreshing && emails.length === 0 ? (
 					<EmailListSkeleton />
 				) : emails.length > 0 ? (
 						<div>
 							{emails.map((email) => {
-								const isSelected = selectedEmailId === email.id;
+								const isSelected = selectedEmailId === email.id && (!unified || mailboxId === email.mailbox_id);
 								const snippet = getSnippetText(email.snippet);
 								return (
 									<div
-										key={email.id}
+										key={`${email.mailbox_id || mailboxId}:${email.id}`}
 										role="button"
 										tabIndex={0}
 										onClick={() => handleRowClick(email)}
@@ -361,6 +377,7 @@ export default function EmailListRoute() {
 
 										{/* Content */}
 										<div className="min-w-0 flex-1">
+											{unified && <div className="mb-0.5 truncate text-xs text-kumo-brand">{email.mailbox_id}</div>}
 											<div className="flex items-center gap-2">
 												<span
 													className={`truncate text-sm ${hasUnread(email) ? "font-semibold text-kumo-default" : "text-kumo-strong"}`}
@@ -412,9 +429,9 @@ export default function EmailListRoute() {
 													icon={email.read ? <EnvelopeSimpleIcon size={14} /> : <EnvelopeOpenIcon size={14} />}
 													onClick={(e) => {
 														e.stopPropagation();
-														if (mailboxId)
+														if (email.mailbox_id || mailboxId)
 															updateEmail.mutate({
-																mailboxId,
+																mailboxId: (email.mailbox_id || mailboxId)!,
 																id: email.id,
 																data: { read: !email.read },
 															});
@@ -428,7 +445,7 @@ export default function EmailListRoute() {
 													shape="square"
 													size="sm"
 													icon={<TrashIcon size={14} />}
-													onClick={(e) => handleDelete(e, email.id)}
+													onClick={(e) => handleDelete(e, email)}
 													aria-label="Delete"
 												/>
 											</Tooltip>
@@ -446,7 +463,12 @@ export default function EmailListRoute() {
 				</div>
 
 				{/* Pagination */}
-				{totalCount > PAGE_SIZE && (
+				{unified && (cursors.length > 0 || unifiedQuery.data?.nextCursor) && <div className="flex items-center justify-center gap-3 border-t border-kumo-line py-3 shrink-0">
+					<Button size="sm" variant="secondary" disabled={cursors.length === 0 || isRefreshing} onClick={() => setCursors((previous) => previous.slice(0, -1))}>上一页</Button>
+					<span className="text-xs text-kumo-subtle">第 {cursors.length + 1} 页</span>
+					<Button size="sm" variant="secondary" disabled={!unifiedQuery.data?.nextCursor || isRefreshing} onClick={() => { const next = unifiedQuery.data?.nextCursor; if (next) setCursors((previous) => [...previous, next]); }}>下一页</Button>
+				</div>}
+				{!unified && totalCount > PAGE_SIZE && (
 					<div className="flex justify-center py-3 border-t border-kumo-line shrink-0">
 						<Pagination
 							page={page}

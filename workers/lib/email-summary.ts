@@ -78,7 +78,7 @@ export class EmailSummaryService {
 		this.dependencies = dependencies;
 	}
 
-	async summarize(emailId: string): Promise<EmailSummary> {
+	private async prepare(emailId: string) {
 		const deps = this.dependencies;
 		const email = await deps.getEmail(emailId);
 		if (!email) throw new EmailSummaryError("邮件不存在。", 404);
@@ -110,6 +110,19 @@ export class EmailSummaryService {
 
 		const fingerprint = await digest(`${EMAIL_SUMMARY_SYSTEM_PROMPT}\n${deps.model}\n${prompt}`);
 		const cacheKey = `email-summary:${await digest(email.thread_id || email.id)}`;
+		return { fingerprint, cacheKey, prompt, messageCount: messages.length };
+	}
+
+	/** Read a saved summary without starting an AI call. */
+	async getSaved(emailId: string): Promise<EmailSummary | undefined> {
+		const { fingerprint, cacheKey } = await this.prepare(emailId);
+		const cached = await this.dependencies.getCached(cacheKey);
+		return cached?.fingerprint === fingerprint ? cached.result : undefined;
+	}
+
+	async summarize(emailId: string): Promise<EmailSummary> {
+		const deps = this.dependencies;
+		const { fingerprint, cacheKey, prompt, messageCount } = await this.prepare(emailId);
 		const cached = await deps.getCached(cacheKey);
 		if (cached?.fingerprint === fingerprint) return cached.result;
 		const existing = this.pending.get(fingerprint);
@@ -119,7 +132,7 @@ export class EmailSummaryService {
 		const job = (async () => {
 			const text = (await deps.generate(prompt)).trim();
 			if (!text) throw new EmailSummaryError("未生成摘要，请重试。", 502);
-			const result: EmailSummary = { text, generatedAt: new Date().toISOString(), messageCount: messages.length };
+			const result: EmailSummary = { text, generatedAt: new Date().toISOString(), messageCount };
 			await deps.putCached(cacheKey, { fingerprint, result });
 			return result;
 		})();

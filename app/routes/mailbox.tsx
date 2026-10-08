@@ -3,7 +3,8 @@
 //     https://opensource.org/licenses/Apache-2.0
 
 import { useEffect, useRef } from "react";
-import { Outlet, useParams } from "react-router";
+import { Outlet } from "react-router";
+import { useActiveMailboxId } from "~/hooks/useActiveMailbox";
 import AgentSidebar from "~/components/AgentSidebar";
 import ComposeEmail from "~/components/ComposeEmail";
 import Header from "~/components/Header";
@@ -11,8 +12,8 @@ import Sidebar from "~/components/Sidebar";
 import { useMailbox } from "~/queries/mailboxes";
 import { useUIStore } from "~/hooks/useUIStore";
 
-export default function MailboxRoute() {
-	const { mailboxId } = useParams<{ mailboxId: string }>();
+export default function MailboxRoute({ unified = false }: { unified?: boolean }) {
+	const mailboxId = useActiveMailboxId();
 	// Prefetch mailbox data for child components
 	useMailbox(mailboxId);
 	const prevMailboxIdRef = useRef<string | undefined>(undefined);
@@ -26,7 +27,7 @@ export default function MailboxRoute() {
 
 	useEffect(() => {
 		if (
-			prevMailboxIdRef.current &&
+			!unified && prevMailboxIdRef.current &&
 			mailboxId &&
 			prevMailboxIdRef.current !== mailboxId
 		) {
@@ -36,7 +37,7 @@ export default function MailboxRoute() {
 		}
 
 		prevMailboxIdRef.current = mailboxId;
-	}, [mailboxId, closeComposeModal, closePanel, closeSidebar]);
+	}, [mailboxId, unified, closeComposeModal, closePanel, closeSidebar]);
 
 	return (
 		<div className="flex h-screen overflow-hidden">
@@ -58,19 +59,19 @@ export default function MailboxRoute() {
 					isSidebarOpen ? "translate-x-0" : "-translate-x-full"
 				}`}
 			>
-				<Sidebar />
+				<Sidebar unified={unified} />
 			</div>
 
 			{/* Main content */}
 			<div className="flex-1 flex flex-col min-w-0 bg-kumo-base">
-				<Header />
+				<Header unified={unified} />
 				<main className="flex-1 overflow-hidden">
 					<Outlet />
 				</main>
 			</div>
 
 			{/* Agent + MCP sidebar -- togglable on desktop */}
-			{isAgentPanelOpen && (
+			{isAgentPanelOpen && mailboxId && (
 				<div className="hidden lg:flex w-[380px] shrink-0 border-l border-kumo-line flex-col bg-kumo-base overflow-hidden">
 					<AgentSidebar />
 				</div>

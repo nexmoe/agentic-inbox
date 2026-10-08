@@ -17,6 +17,8 @@ export interface ComposeOptions {
 interface UIState {
 	// Side panel state
 	selectedEmailId: string | null;
+	selectedMailboxId?: string;
+	selectMailbox: (id: string) => void;
 	isComposing: boolean;
 	_previousEmailId: string | null;
 	selectEmail: (id: string | null) => void;
@@ -45,6 +47,8 @@ interface UIState {
 
 export const useUIStore = create<UIState>((set, get) => ({
 	selectedEmailId: null,
+	selectedMailboxId: undefined,
+	selectMailbox: (id) => set({ selectedMailboxId: id }),
 	isComposing: false,
 	_previousEmailId: null,
 	composeOptions: { mode: "new", originalEmail: null },

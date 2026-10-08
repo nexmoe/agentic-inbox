@@ -33,6 +33,7 @@ import {
 } from "../lib/tools";
 import { Folders, FOLDER_TOOL_DESCRIPTION, MOVE_FOLDER_TOOL_DESCRIPTION } from "../../shared/folders";
 import type { Env } from "../types";
+import type { EmailSummaryState } from "../../shared/email-summary";
 
 // AI SDK v6 changed tool() overloads significantly. We define tools as plain
 // objects matching the Tool type to avoid overload resolution issues.
@@ -277,6 +278,25 @@ function createEmailTools(env: Env, mailboxId: string) {
 export class EmailAgent extends AIChatAgent<any> {
 	private summaryService?: EmailSummaryService;
 
+	/** Alarm-backed task: runs after delivery even when no browser is open. */
+	async summarizeReceivedEmail({ emailId }: { emailId: string }) {
+		const key = `email-summary-state:${emailId}`;
+		await this.ctx.storage.put(key, { status: "pending", queuedAt: new Date().toISOString() });
+		try {
+			await this.retry(() => this.getSummaryService().summarize(emailId), {
+				maxAttempts: 2, baseDelayMs: 2_000, maxDelayMs: 5_000,
+				shouldRetry: (error) => !(error instanceof EmailSummaryError) || error.status === 429 || error.status === 502,
+			});
+			await this.ctx.storage.delete(key);
+		} catch (error) {
+			await this.ctx.storage.put(key, {
+				status: "error",
+				error: error instanceof EmailSummaryError ? error.message : "暂时无法生成摘要，请重试。",
+			});
+			if (!(error instanceof EmailSummaryError) || error.status === 429 || error.status === 502) throw error;
+		}
+	}
+
 	private getSummaryService() {
 		if (!this.summaryService) {
 			const env = this.env as Env;
@@ -333,6 +353,23 @@ export class EmailAgent extends AIChatAgent<any> {
 	 */
 	async onRequest(request: Request): Promise<Response> {
 		const url = new URL(request.url);
+		if (url.pathname === "/emailSummary" && request.method === "GET") {
+			const emailId = url.searchParams.get("emailId");
+			if (!emailId || emailId.length > 256) return Response.json({ error: "邮件 ID 无效。" }, { status: 400 });
+			try {
+				const summary = await this.getSummaryService().getSaved(emailId);
+				let state: EmailSummaryState = summary
+					? { status: "ready", summary }
+					: await this.ctx.storage.get<EmailSummaryState>(`email-summary-state:${emailId}`) ?? { status: "missing" };
+				if (state.status === "pending" && Date.now() - Date.parse(state.queuedAt) > 120_000) {
+					state = { status: "error", error: "摘要生成超时，请重试。" };
+				}
+				return Response.json(state, { headers: { "Cache-Control": "no-store" } });
+			} catch (error) {
+				if (error instanceof EmailSummaryError) return Response.json({ status: "error", error: error.message });
+				return Response.json({ error: "暂时无法读取摘要。" }, { status: 502 });
+			}
+		}
 		if (url.pathname === "/summarizeEmail" && request.method === "POST") {
 			try {
 				const data = await request.json() as { emailId?: unknown };
@@ -358,10 +395,17 @@ export class EmailAgent extends AIChatAgent<any> {
 					subject: string;
 					threadId: string;
 				};
-				const result = await this.handleNewEmail(emailData);
-				return new Response(JSON.stringify(result), {
-					headers: { "Content-Type": "application/json" },
+				if (emailData.mailboxId !== this.name || typeof emailData.emailId !== "string" || !emailData.emailId || emailData.emailId.length > 256) {
+					return Response.json({ error: "Invalid mailbox or email ID" }, { status: 400 });
+				}
+				await this.ctx.storage.put(`email-summary-state:${emailData.emailId}`, { status: "pending", queuedAt: new Date().toISOString() });
+				await this.schedule(0, "summarizeReceivedEmail", { emailId: emailData.emailId }, {
+					retry: { maxAttempts: 1 },
 				});
+				this.ctx.waitUntil(this.handleNewEmail(emailData).catch((error) => {
+					console.error("Auto-draft failed:", (error as Error).name);
+				}));
+				return Response.json({ status: "scheduled" }, { status: 202 });
 			} catch (e) {
 				console.error("onNewEmail handler failed:", (e as Error).message);
 				return new Response(

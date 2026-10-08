@@ -18,7 +18,8 @@ import {
 } from "./lib/email-helpers";
 import { SendEmailRequestSchema } from "./lib/schemas";
 import { handleReplyEmail, handleForwardEmail } from "./routes/reply-forward";
-import { Folders } from "../shared/folders";
+import { Folders, SYSTEM_FOLDER_IDS } from "../shared/folders";
+import { decodeUnifiedCursor, listUnifiedEmails } from "./lib/unified-inbox";
 import type { Env } from "./types";
 import { requireMailbox, type MailboxContext } from "./lib/mailbox";
 
@@ -143,6 +144,31 @@ app.delete("/api/v1/mailboxes/:mailboxId", async (c) => {
 
 // -- Emails ---------------------------------------------------------
 
+app.get("/api/v1/emails", async (c) => {
+	const folder = c.req.query("folder") || Folders.INBOX;
+	const limit = Number(c.req.query("limit") || 25);
+	if (!(SYSTEM_FOLDER_IDS as readonly string[]).includes(folder) || !Number.isInteger(limit) || limit < 1 || limit > 50) {
+		return c.json({ error: "Invalid folder or limit" }, 400);
+	}
+	let cursor;
+	try {
+		const raw = c.req.query("cursor");
+		cursor = raw ? decodeUnifiedCursor(raw, folder) : undefined;
+	} catch {
+		return c.json({ error: "Invalid cursor" }, 400);
+	}
+	const mailboxes = await listMailboxes(c.env.BUCKET);
+	const page = await listUnifiedEmails(mailboxes.map((mailbox) => mailbox.id), { folder, limit, cursor }, async (mailboxId, batchSize, before) => {
+		const stub = c.env.MAILBOX.get(c.env.MAILBOX.idFromName(mailboxId));
+		const [emails, totalCount] = await Promise.all([
+			stub.getUnifiedEmails(folder, mailboxId, batchSize, before),
+			stub.countEmails({ folder }),
+		]);
+		return { emails, totalCount };
+	});
+	return c.json(page, 200, { "Cache-Control": "no-store" });
+});
+
 app.get("/api/v1/mailboxes/:mailboxId/emails", async (c: AppContext) => {
 	const folder = c.req.query("folder");
 	const thread_id = c.req.query("thread_id");
@@ -244,6 +270,11 @@ app.post("/api/v1/mailboxes/:mailboxId/emails/:id/summary", async (c: AppContext
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify({ emailId: c.req.param("id") }),
 	}));
+});
+
+app.get("/api/v1/mailboxes/:mailboxId/emails/:id/summary", async (c: AppContext) => {
+	const agent = await getAgentByName(c.env.EMAIL_AGENT, c.req.param("mailboxId")!);
+	return agent.fetch(new Request(`https://agents/emailSummary?emailId=${encodeURIComponent(c.req.param("id")!)}`));
 });
 
 app.put("/api/v1/mailboxes/:mailboxId/emails/:id", async (c: AppContext) => {
@@ -412,11 +443,14 @@ async function receiveEmail(event: { raw: ReadableStream; rawSize: number; to: s
 		thread_id: threadId, message_id: originalMessageId, raw_headers: JSON.stringify(parsedEmail.headers),
 	}, attachmentData);
 
-	const agentStub = env.EMAIL_AGENT.get(env.EMAIL_AGENT.idFromName(mailboxId));
-	ctx.waitUntil(agentStub.fetch(new Request("https://agents/onNewEmail", {
-		method: "POST", headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({ mailboxId, emailId: messageId, sender: (parsedEmail.from?.address || "").toLowerCase(), subject: parsedEmail.subject || "", threadId }),
-	})).catch((e) => console.error("Auto-draft trigger failed:", (e as Error).message)));
+	ctx.waitUntil((async () => {
+		const agentStub = await getAgentByName(env.EMAIL_AGENT, mailboxId);
+		const response = await agentStub.fetch(new Request("https://agents/onNewEmail", {
+			method: "POST", headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ mailboxId, emailId: messageId, sender: (parsedEmail.from?.address || "").toLowerCase(), subject: parsedEmail.subject || "", threadId }),
+		}));
+		if (!response.ok) throw new Error(`Agent trigger returned ${response.status}`);
+	})().catch((e) => console.error("Incoming email Agent trigger failed:", (e as Error).message)));
 }
 
 export { app, receiveEmail };

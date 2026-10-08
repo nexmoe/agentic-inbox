@@ -7,7 +7,7 @@ Agentic Inbox lets you send, receive, and manage emails through a modern web int
 
 An **AI-powered Email Agent** can read your inbox, search conversations, and draft replies -- built with the [Cloudflare Agents SDK](https://developers.cloudflare.com/agents/) and [Workers AI](https://developers.cloudflare.com/workers-ai/).
 
-This fork adds automatic Chinese summaries when you open an email. The summary appears above the message body and covers the full conversation.
+This fork generates Chinese summaries as soon as an email arrives and adds a unified view of every mailbox. Summaries appear above the message body and cover the full conversation.
 
 ![Agentic Inbox screenshot](./demo_app.png)
 
@@ -39,7 +39,8 @@ Use the cf CLI workflow in **Getting Started** below. The application also needs
 - **Per-mailbox isolation** — Each mailbox runs in its own Durable Object with SQLite storage and R2 for attachments
 - **Built-in AI agent** — Side panel with 9 email tools for reading, searching, drafting, and organizing
 - **Auto-draft on new email** — Agent automatically reads inbound emails and generates draft replies, always requiring explicit confirmation before sending
-- **Auto-summary on open** — Opening an email detail triggers the mailbox Agent to summarize the full body and conversation in Chinese. Successful summaries are cached and refresh when the conversation changes. Failed requests can be retried.
+- **Auto-summary on arrival** — Receiving an email schedules the mailbox Agent to summarize the full body and conversation in Chinese, even while the app is closed. Opening details reads the saved summary. Failed requests and historical emails offer a manual generation button.
+- **Unified mailbox view** — The **全部邮件** entry on the home page and mailbox sidebar combines all inboxes in one list, newest first. Each row shows its mailbox. Details, read status, stars, replies, and drafts use that mailbox. Sent, drafts, archive, and trash can also be viewed across mailboxes.
 - **Configurable and persistent** — Custom system prompts per mailbox, persistent chat history, streaming markdown responses, and tool call visibility
 
 ## Stack
@@ -71,7 +72,9 @@ The `AI` binding uses Workers AI directly; no external API key is needed.
 `@cf/zai-org/glm-4.7-flash`, which supports tool calling within the Workers AI free allocation.
 Prompt injection checks and draft review also use Workers AI and share the account's daily allocation.
 
-Summaries use the complete text of all saved messages in the thread, excluding unsent drafts. Attachment names and metadata are included; attachment contents are not read. Conversations over 80,000 characters return a visible error rather than a partial summary. Each mailbox allows two concurrent summary generations, with a 25-second model timeout and no automatic retries. Reopening unchanged emails uses the persisted Agent cache.
+Summaries use the complete text of all saved messages in the thread, excluding unsent drafts. Attachment names and metadata are included; attachment contents are not read. Conversations over 80,000 characters return a visible error rather than a partial summary. Each mailbox allows two concurrent summary generations, with a 25-second model timeout. A durable task starts on receipt and makes at most two attempts on transient errors. Automatic drafts run independently. Reopening unchanged emails reads the persisted Agent cache without another model call. Existing emails without a summary can be summarized manually.
+
+The unified list uses bounded keyset pagination across mailbox Durable Objects. New arrivals do not shift later pages. Cloudflare Access protects the aggregate API under the same policy as individual mailboxes.
 
 ```bash
 npm test
