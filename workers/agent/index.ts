@@ -13,6 +13,8 @@ import { createWorkersAI } from "workers-ai-provider";
 import { z } from "zod";
 import type { EmailFull, EmailMetadata } from "../lib/schemas";
 import { verifyDraft, isPromptInjection } from "../lib/ai";
+import { EmailSummaryService, EmailSummaryError, EMAIL_SUMMARY_SYSTEM_PROMPT } from "../lib/email-summary";
+import type { EmailSummaryMailbox } from "../lib/email-summary";
 import {
 	getMailboxStub,
 	stripHtmlToText,
@@ -273,6 +275,39 @@ function createEmailTools(env: Env, mailboxId: string) {
 // SEND_EMAIL binding shape and the AIChatAgent constraint.  The actual env
 // is fully typed inside the tools via the closure.
 export class EmailAgent extends AIChatAgent<any> {
+	private summaryService?: EmailSummaryService;
+
+	private getSummaryService() {
+		if (!this.summaryService) {
+			const env = this.env as Env;
+			const mailbox = getMailboxStub(env, this.name) as unknown as EmailSummaryMailbox;
+			const workersai = createWorkersAI({ binding: env.AI });
+			this.summaryService = new EmailSummaryService({
+				model: env.AI_MODEL,
+				draftFolder: Folders.DRAFT,
+				getEmail: (id) => mailbox.getEmail(id),
+				getThread: (id) => mailbox.getThreadEmails(id),
+				getCached: (key) => this.ctx.storage.get(key),
+				putCached: (key, value) => this.ctx.storage.put(key, value),
+				generate: async (prompt) => {
+					const result = await generateText({
+						model: workersai(env.AI_MODEL, env.AI_MODEL === "@cf/zai-org/glm-4.7-flash"
+							? { chat_template_kwargs: { enable_thinking: false } }
+							: undefined),
+						system: EMAIL_SUMMARY_SYSTEM_PROMPT,
+						prompt,
+						maxOutputTokens: 1_600,
+						maxRetries: 0,
+						abortSignal: AbortSignal.timeout(25_000),
+					});
+					if (result.finishReason === "length") throw new EmailSummaryError("摘要生成未完成，请重试。", 502);
+					return result.text;
+				},
+			});
+		}
+		return this.summaryService;
+	}
+
 	async onChatMessage(onFinish: any) {
 		const env = this.env as Env;
 		const mailboxId = this.name;
@@ -281,7 +316,7 @@ export class EmailAgent extends AIChatAgent<any> {
 		const systemPrompt = await getSystemPrompt(env, mailboxId);
 
 		const result = streamText({
-			model: workersai("@cf/moonshotai/kimi-k2.5"),
+			model: workersai(env.AI_MODEL),
 			system: systemPrompt,
 			messages: await convertToModelMessages(this.messages),
 			tools,
@@ -298,6 +333,22 @@ export class EmailAgent extends AIChatAgent<any> {
 	 */
 	async onRequest(request: Request): Promise<Response> {
 		const url = new URL(request.url);
+		if (url.pathname === "/summarizeEmail" && request.method === "POST") {
+			try {
+				const data = await request.json() as { emailId?: unknown };
+				if (typeof data?.emailId !== "string" || !data.emailId || data.emailId.length > 256) {
+					return Response.json({ error: "邮件 ID 无效。" }, { status: 400 });
+				}
+				const job = this.getSummaryService().summarize(data.emailId);
+				this.ctx.waitUntil(job.catch(() => {}));
+				return Response.json(await job, { headers: { "Cache-Control": "no-store" } });
+			} catch (error) {
+				if (error instanceof SyntaxError) return Response.json({ error: "请求格式无效。" }, { status: 400 });
+				if (error instanceof EmailSummaryError) return Response.json({ error: error.message }, { status: error.status });
+				console.error("Email summary failed:", (error as Error).name);
+				return Response.json({ error: "暂时无法生成摘要，请稍后重试。" }, { status: 502 });
+			}
+		}
 		if (url.pathname === "/onNewEmail" && request.method === "POST") {
 			try {
 				const emailData = await request.json() as {
@@ -463,7 +514,7 @@ Based on the email content and thread context above, draft a reply using draft_r
 
 		try {
 			const result = await generateText({
-				model: workersai("@cf/moonshotai/kimi-k2.5"),
+				model: workersai(env.AI_MODEL),
 				system: systemPrompt,
 				messages: await convertToModelMessages(messages),
 				tools,

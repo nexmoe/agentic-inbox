@@ -9,6 +9,7 @@ import { Folders } from "shared/folders";
 import EmailPanelDialogs from "~/components/email-panel/EmailPanelDialogs";
 import EmailPanelHeader from "~/components/email-panel/EmailPanelHeader";
 import EmailPanelToolbar from "~/components/email-panel/EmailPanelToolbar";
+import EmailSummaryCard from "~/components/email-panel/EmailSummaryCard";
 import SingleMessageView from "~/components/email-panel/SingleMessageView";
 import ThreadMessage from "~/components/email-panel/ThreadMessage";
 import { splitEmailList, toEmailListValue } from "~/lib/utils";
@@ -32,9 +33,7 @@ function EmailPanelSkeleton() {
 export default function EmailPanel({ emailId }: { emailId: string }) {
 	const { mailboxId, folder } = useParams<{ mailboxId: string; folder: string }>();
 	const { data: email } = useEmail(mailboxId, emailId) as { data?: Email };
-	const { data: threadRepliesRaw } = useThreadReplies(mailboxId, email?.thread_id) as {
-		data?: Email[];
-	};
+	const { data: threadRepliesRaw, isError: threadError } = useThreadReplies(mailboxId, email?.thread_id);
 	const updateEmail = useUpdateEmail();
 	const deleteEmailMut = useDeleteEmail();
 	const moveEmailMut = useMoveEmail();
@@ -138,6 +137,7 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 	};
 
 	const hasThread = allMessages.length > 1;
+	const summaryRevision = allMessages.filter((message) => message.folder_id !== Folders.DRAFT).map((message) => message.id).sort().join(",");
 
 	return (
 		<div className="flex flex-col h-full">
@@ -182,6 +182,15 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 			/>
 
 			<div className="flex-1 overflow-y-auto">
+				{!isDraftFolder && email.folder_id !== Folders.DRAFT && (
+					<EmailSummaryCard
+						key={`${mailboxId}:${email.thread_id || email.id}`}
+						mailboxId={mailboxId}
+						email={email}
+						revision={summaryRevision}
+						ready={!email.thread_id || threadRepliesRaw !== undefined || threadError}
+					/>
+				)}
 				{hasThread ? (
 					allMessages.map((msg, idx) => {
 						const isDraft = draftMessageIds.has(msg.id);

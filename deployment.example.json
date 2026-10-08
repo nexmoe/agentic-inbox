@@ -1,0 +1,10 @@
+{
+  "accountId": "YOUR_CLOUDFLARE_ACCOUNT_ID",
+  "webDomain": "mail.example.com",
+  "domains": ["example.com"],
+  "emailAddresses": ["team@example.com"],
+  "emailForwarding": {
+    "team@example.com": "owner@gmail.com"
+  },
+  "aiModel": "@cf/zai-org/glm-4.7-flash"
+}
