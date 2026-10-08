@@ -7,6 +7,8 @@ Agentic Inbox lets you send, receive, and manage emails through a modern web int
 
 An **AI-powered Email Agent** can read your inbox, search conversations, and draft replies -- built with the [Cloudflare Agents SDK](https://developers.cloudflare.com/agents/) and [Workers AI](https://developers.cloudflare.com/workers-ai/).
 
+This fork adds automatic Chinese summaries when you open an email. The summary appears above the message body and covers the full conversation.
+
 ![Agentic Inbox screenshot](./demo_app.png)
 
 
@@ -14,19 +16,15 @@ Read the blog post to learn more about Cloudflare Email Service and how to use i
 
 ## How to setup
 
-**Important**: Clicking the 'Deploy to Cloudflare' button is only one part of the setup. You must follow the **After deploying** steps as well. For a full step-by-step guide with screenshots, refer to this comment: 
-https://github.com/cloudflare/agentic-inbox/issues/4#issuecomment-4269118513
+Use the cf CLI workflow in **Getting Started** below. The application also needs Cloudflare Access and Email Routing.
 
 ### To set up
 
-1. Deploy to Cloudflare. The deploy flow will automatically provision R2, Durable Objects, and Workers AI. You'll be prompted for **DOMAINS**, which is the domain (yourdomain.com) you want to receive emails for (email@yourdomain.com).
-
-     [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/cloudflare/agentic-inbox)
-
+1. Configure `.cloudflare/deployment.json` and deploy with `npm run deploy`. cf provisions the configured R2 bucket and Durable Objects.
 2. **Configure Cloudflare Access** -- Enable [one-click Cloudflare Access](https://developers.cloudflare.com/changelog/post/2025-10-03-one-click-access-for-workers/) on your Worker under Settings > Domains & Routes. The modal will show your `POLICY_AUD` and `TEAM_DOMAIN` values. `TEAM_DOMAIN` can be either your Access team URL or the full `.../cdn-cgi/access/certs` URL. **You must set these as secrets for your Worker.**
-3. **Set up Email Routing** -- In the Cloudflare dashboard, go to your domain > Email Routing and create a catch-all rule that forwards to this Worker
-4. **Enable Email Service** -- The worker needs the `send_email` binding to send outbound emails. See [Email Service docs](https://developers.cloudflare.com/email-routing/email-workers/send-email-workers/)
-5. **Create a mailbox** -- Visit your deployed app and create a mailbox for any address on your domain (e.g. `hello@example.com`)
+3. **Set up Email Routing** -- Enable routing for each mail domain and point rules for your configured addresses to this Worker. Verify any forwarding destinations.
+4. **Create a mailbox** -- Visit your deployed app and create mailboxes for the addresses listed in `emailAddresses`.
+5. **Optional sending** -- Configure [Email Service](https://developers.cloudflare.com/email-service/) if you need outbound mail. Receiving, forwarding, and summaries work independently.
 
 ### Troubleshooting Access
 
@@ -39,34 +37,55 @@ https://github.com/cloudflare/agentic-inbox/issues/4#issuecomment-4269118513
 
 - **Full email client** — Send and receive emails via Cloudflare Email Routing with a rich text composer, reply/forward threading, folder organization, search, and attachments
 - **Per-mailbox isolation** — Each mailbox runs in its own Durable Object with SQLite storage and R2 for attachments
-- **Built-in AI agent** — Side panel with 9 email tools for reading, searching, drafting, and sending
+- **Built-in AI agent** — Side panel with 9 email tools for reading, searching, drafting, and organizing
 - **Auto-draft on new email** — Agent automatically reads inbound emails and generates draft replies, always requiring explicit confirmation before sending
+- **Auto-summary on open** — Opening an email detail triggers the mailbox Agent to summarize the full body and conversation in Chinese. Successful summaries are cached and refresh when the conversation changes. Failed requests can be retried.
 - **Configurable and persistent** — Custom system prompts per mailbox, persistent chat history, streaming markdown responses, and tool call visibility
 
 ## Stack
 
-- **Frontend:** React 19, React Router v7, Tailwind CSS, Zustand, TipTap, `@cloudflare/kumo`
+- **Frontend:** React 19, React Router v8, Tailwind CSS, Zustand, TipTap, `@cloudflare/kumo`
 - **Backend:** Hono, Cloudflare Workers, Durable Objects (SQLite), R2, Email Routing
-- **AI Agent:** Cloudflare Agents SDK (`AIChatAgent`), AI SDK v6, Workers AI (`@cf/moonshotai/kimi-k2.5`), `react-markdown` + `remark-gfm`
+- **AI Agent:** Cloudflare Agents SDK (`AIChatAgent`), AI SDK v6, Workers AI (`@cf/zai-org/glm-4.7-flash`), `react-markdown` + `remark-gfm`
 - **Auth:** Cloudflare Access JWT validation (required outside local development)
 
 ## Getting Started
 
 ```bash
 npm install
+mkdir -p .cloudflare
+cp deployment.example.json .cloudflare/deployment.json
+# Edit the local deployment settings before starting or deploying.
 npm run dev
 ```
 
 ### Configuration
 
-1. Set your domain in `wrangler.jsonc`
-2. Create an R2 bucket named `agentic-inbox`: `wrangler r2 bucket create agentic-inbox`
+1. Copy `deployment.example.json` to `.cloudflare/deployment.json` and set your account, web domain, mail domains, addresses, and optional forwarding destinations. This local file is ignored by Git.
+2. Authenticate with `npx cf auth login`.
+3. `cf deploy` creates the configured R2 bucket and SQLite Durable Objects.
+4. Configure Email Routing and Cloudflare Access. Set `POLICY_AUD` and `TEAM_DOMAIN` as Worker secrets.
+
+The `AI` binding uses Workers AI directly; no external API key is needed.
+`AI_MODEL` selects the model for chat, automatic reply drafts, and summaries. The default is
+`@cf/zai-org/glm-4.7-flash`, which supports tool calling within the Workers AI free allocation.
+Prompt injection checks and draft review also use Workers AI and share the account's daily allocation.
+
+Summaries use the complete text of all saved messages in the thread, excluding unsent drafts. Attachment names and metadata are included; attachment contents are not read. Conversations over 80,000 characters return a visible error rather than a partial summary. Each mailbox allows two concurrent summary generations, with a 25-second model timeout and no automatic retries. Reopening unchanged emails uses the persisted Agent cache.
+
+```bash
+npm test
+npm run typecheck
+```
 
 ### Deploy
 
 ```bash
 npm run deploy
 ```
+
+This checkout uses cf CLI 1.0 beta, Vite 7, and React Router 8. Use Node.js 22.22 or newer.
+The Vite build includes a `build/client` alias so React Router can read assets from cf's Build Output directory.
 
 ## Prerequisites
 

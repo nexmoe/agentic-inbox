@@ -7,15 +7,15 @@
     "app/**/.client/**/*",
     "workers/**/*",
     "shared/**/*",
-    "worker-configuration.d.ts"
+    ".cloudflare/types/index.d.ts"
   ],
   "compilerOptions": {
     "composite": true,
     "strict": true,
     "lib": ["DOM", "DOM.Iterable", "ES2022"],
-    "types": ["vite/client", "@cloudflare/workers-types/experimental"],
+    "types": ["vite/client", "node"],
     "target": "ES2022",
-    "module": "ES2022",
+    "module": "ESNext",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
     "baseUrl": ".",

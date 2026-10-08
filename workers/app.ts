@@ -5,23 +5,16 @@
 import { routeAgentRequest } from "agents";
 import { Hono } from "hono";
 import { jwtVerify, createRemoteJWKSet } from "jose";
-import { createRequestHandler } from "react-router";
+import { createRequestHandler, RouterContextProvider } from "react-router";
+import { cloudflareContext } from "../shared/router-context";
 import { app as apiApp, receiveEmail } from "./index";
+import { deliverIncomingEmail } from "./lib/incoming-email";
 import { EmailMCP } from "./mcp";
 import type { Env } from "./types";
 
 export { MailboxDO } from "./durableObject";
 export { EmailAgent } from "./agent";
 export { EmailMCP } from "./mcp";
-
-declare module "react-router" {
-	export interface AppLoadContext {
-		cloudflare: {
-			env: Env;
-			ctx: ExecutionContext;
-		};
-	}
-}
 
 const requestHandler = createRequestHandler(
 	() => import("virtual:react-router/server-build"),
@@ -102,21 +95,26 @@ app.all("/agents/*", async (c) => {
 
 // React Router catch-all: serves the SPA for all non-API routes
 app.all("*", (c) => {
-	return requestHandler(c.req.raw, {
-		cloudflare: { env: c.env, ctx: c.executionCtx as ExecutionContext },
-	});
+	const context = new RouterContextProvider();
+	context.set(cloudflareContext, { env: c.env, ctx: c.executionCtx as ExecutionContext });
+	return requestHandler(c.req.raw, context);
 });
 
 // Export the Hono app as the default export with an email handler
 export default {
 	fetch: app.fetch,
 	async email(
-		event: { raw: ReadableStream; rawSize: number },
+		event: ForwardableEmailMessage,
 		env: Env,
 		ctx: ExecutionContext,
 	) {
 		try {
-			await receiveEmail(event, env, ctx);
+			const forwarding = env.EMAIL_FORWARDING as Record<string, string>;
+			const forwardTo = forwarding[event.to.toLowerCase()];
+			await deliverIncomingEmail(
+				() => receiveEmail(event, env, ctx),
+				forwardTo ? () => event.forward(forwardTo) : undefined,
+			);
 		} catch (e) {
 			console.error("Failed to process incoming email:", (e as Error).message, (e as Error).stack);
 			// Re-throw so Cloudflare's email routing can retry delivery or bounce the message.

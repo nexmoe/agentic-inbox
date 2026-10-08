@@ -1,6 +1,8 @@
 node_modules/
 build/
 .wrangler/
+.cloudflare/
+/DEPLOYMENT.md
 .react-router/
 *.tsbuildinfo
 *.tgz

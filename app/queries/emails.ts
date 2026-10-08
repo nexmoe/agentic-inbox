@@ -6,6 +6,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "~/services/api";
 import type { Email } from "~/types";
 import { queryKeys } from "./keys";
+import type { EmailSummary } from "../../shared/email-summary";
 
 // ---------- Types ----------
 
@@ -88,6 +89,25 @@ export function useThreadReplies(
 			return emails;
 		},
 		enabled: !!mailboxId && !!threadId,
+	});
+}
+
+export function useEmailSummary(
+	mailboxId: string | undefined,
+	email: Email,
+	revision: string,
+	enabled: boolean,
+) {
+	return useQuery<EmailSummary>({
+		queryKey: mailboxId
+			? queryKeys.emailSummaries.detail(mailboxId, email.thread_id || email.id, revision)
+			: ["email-summaries", "_disabled"],
+		queryFn: ({ signal }) => api.summarizeEmail(mailboxId!, email.id, { signal }),
+		enabled: !!mailboxId && enabled,
+		staleTime: Infinity,
+		retry: false,
+		refetchOnWindowFocus: false,
+		refetchOnReconnect: false,
 	});
 }
 

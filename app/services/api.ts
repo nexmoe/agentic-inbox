@@ -3,6 +3,7 @@
 //     https://opensource.org/licenses/Apache-2.0
 
 import type { Email, Folder, Mailbox } from "~/types";
+import type { EmailSummary } from "../../shared/email-summary";
 
 const REQUEST_TIMEOUT_MS = 30_000;
 
@@ -117,6 +118,8 @@ const api = {
 		post<void>(`/api/v1/mailboxes/${mailboxId}/emails`, email),
 	getEmail: (mailboxId: string, id: string, opts?: { signal?: AbortSignal }) =>
 		get<Email>(`/api/v1/mailboxes/${mailboxId}/emails/${id}`, { signal: opts?.signal }),
+	summarizeEmail: (mailboxId: string, id: string, opts?: { signal?: AbortSignal }) =>
+		post<EmailSummary>(`/api/v1/mailboxes/${mailboxId}/emails/${id}/summary`, undefined, opts),
 	updateEmail: (mailboxId: string, id: string, data: unknown) =>
 		put<Email>(`/api/v1/mailboxes/${mailboxId}/emails/${id}`, data),
 	deleteEmail: (mailboxId: string, id: string) =>
