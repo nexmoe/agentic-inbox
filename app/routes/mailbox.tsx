@@ -4,7 +4,7 @@
 
 import { useEffect, useRef } from "react";
 import { Outlet } from "react-router";
-import { useActiveMailboxId } from "~/hooks/useActiveMailbox";
+import { useActiveMailboxId, useUnifiedMailbox } from "~/hooks/useActiveMailbox";
 import AgentSidebar from "~/components/AgentSidebar";
 import ComposeEmail from "~/components/ComposeEmail";
 import Header from "~/components/Header";
@@ -12,7 +12,8 @@ import Sidebar from "~/components/Sidebar";
 import { useMailbox } from "~/queries/mailboxes";
 import { useUIStore } from "~/hooks/useUIStore";
 
-export default function MailboxRoute({ unified = false }: { unified?: boolean }) {
+export default function MailboxRoute() {
+	const unified = useUnifiedMailbox();
 	const mailboxId = useActiveMailboxId();
 	// Prefetch mailbox data for child components
 	useMailbox(mailboxId);

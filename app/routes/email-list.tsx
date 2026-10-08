@@ -33,7 +33,7 @@ import {
 import { useFolders } from "~/queries/folders";
 import { queryKeys } from "~/queries/keys";
 import { useUIStore } from "~/hooks/useUIStore";
-import { useActiveMailboxId } from "~/hooks/useActiveMailbox";
+import { useActiveMailboxId, useUnifiedMailbox } from "~/hooks/useActiveMailbox";
 import type { Email } from "~/types";
 
 const PAGE_SIZE = 25;
@@ -142,7 +142,8 @@ function FolderEmptyState({
 	);
 }
 
-export default function EmailListRoute({ unified = false }: { unified?: boolean }) {
+export default function EmailListRoute() {
+	const unified = useUnifiedMailbox();
 	const { folder } = useParams<{ folder: string }>();
 	const mailboxId = useActiveMailboxId();
 	const {

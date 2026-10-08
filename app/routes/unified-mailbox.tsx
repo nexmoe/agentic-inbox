@@ -14,5 +14,5 @@ export default function UnifiedMailboxRoute() {
 		closeComposeModal();
 		closeSidebar();
 	}, [closePanel, closeComposeModal, closeSidebar]);
-	return <ActiveMailboxContext.Provider value={{ mailboxId }}><MailboxRoute unified /></ActiveMailboxContext.Provider>;
+	return <ActiveMailboxContext.Provider value={{ mailboxId, unified: true }}><MailboxRoute /></ActiveMailboxContext.Provider>;
 }
