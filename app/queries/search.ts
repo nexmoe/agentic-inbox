@@ -8,16 +8,15 @@ import api from "~/services/api";
 import { queryKeys } from "./keys";
 import { EMAIL_PAGE_SIZE, nextEmailPage, normalizeEmailPage } from "~/lib/email-pages";
 
-export function useSearchEmails(mailboxId: string | undefined, query: string) {
+export function useSearchEmails(mailboxId: string | undefined, query: string, unified = false) {
 	return useInfiniteQuery({
-		queryKey: mailboxId && query
+		queryKey: unified ? queryKeys.unifiedEmails.search(query) : mailboxId && query
 			? queryKeys.search.infinite(mailboxId, query)
 			: ["search", "_disabled"],
-		initialPageParam: 1,
+		initialPageParam: unified ? "" : 1,
 		queryFn: async ({ pageParam, signal }) => {
 			const parsed = parseSearchQuery(query);
 			const params: Record<string, string> = {
-				page: String(pageParam),
 				limit: String(EMAIL_PAGE_SIZE),
 			};
 			if (parsed.query) params.query = parsed.query;
@@ -33,9 +32,12 @@ export function useSearchEmails(mailboxId: string | undefined, query: string) {
 				params.is_starred = String(parsed.is_starred);
 			if (parsed.has_attachment) params.has_attachment = "true";
 
-			return normalizeEmailPage(await api.searchEmails(mailboxId!, params, { signal }));
+			if (unified) return api.searchUnifiedEmails({ ...params, cursor: String(pageParam) }, { signal });
+			return normalizeEmailPage(await api.searchEmails(mailboxId!, { ...params, page: String(pageParam) }, { signal }));
 		},
-		getNextPageParam: (lastPage, _pages, lastPageParam) => nextEmailPage(lastPage, lastPageParam),
-		enabled: !!mailboxId && !!query,
+		getNextPageParam: (lastPage, _pages, lastPageParam) => unified
+			? ("nextCursor" in lastPage && typeof lastPage.nextCursor === "string" ? lastPage.nextCursor : undefined)
+			: nextEmailPage(lastPage, Number(lastPageParam)),
+		enabled: (unified || !!mailboxId) && !!query.trim(),
 	});
 }

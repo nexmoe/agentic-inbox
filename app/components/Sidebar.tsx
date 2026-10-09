@@ -191,7 +191,7 @@ export default function Sidebar({ unified = false }: { unified?: boolean }) {
 					</div>
 				)}
 			</nav>
-			<Header unified={unified} />
+			<Header />
 
 			{/* Create folder dialog */}
 			<Dialog.Root

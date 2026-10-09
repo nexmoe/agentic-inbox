@@ -166,6 +166,8 @@ const api = {
 		del<void>(`/api/v1/mailboxes/${mailboxId}/folders/${id}`),
 
 	// Search
+	searchUnifiedEmails: (params: Record<string, string>, opts?: { signal?: AbortSignal }) =>
+		get<UnifiedEmailPage<Email>>("/api/v1/search", { params, signal: opts?.signal }),
 	searchEmails: (mailboxId: string, params: Record<string, string>, opts?: { signal?: AbortSignal }) =>
 		get<EmailListResponse | Email[]>(`/api/v1/mailboxes/${mailboxId}/search`, { params, signal: opts?.signal }),
 };
