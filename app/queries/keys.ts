@@ -9,8 +9,8 @@ export const queryKeys = {
 		detail: (id: string) => ["mailboxes", id] as const,
 	},
 	emails: {
-		list: (mailboxId: string, params: Record<string, string>) =>
-			["emails", mailboxId, params] as const,
+		infinite: (mailboxId: string, params: Record<string, string>) =>
+			["emails", mailboxId, params, "infinite"] as const,
 		detail: (mailboxId: string, emailId: string) =>
 			["emails", mailboxId, emailId] as const,
 		thread: (mailboxId: string, threadId: string) =>
@@ -22,14 +22,14 @@ export const queryKeys = {
 	},
 	unifiedEmails: {
 		all: ["unified-emails"] as const,
-		list: (folder: string, cursor: string, unreadOnly = false) => ["unified-emails", folder, cursor, unreadOnly] as const,
+		infinite: (folder: string, unreadOnly = false) => ["unified-emails", "infinite", folder, unreadOnly] as const,
 	},
 	folders: {
 		list: (mailboxId: string) => ["folders", mailboxId] as const,
 	},
 	search: {
-		results: (mailboxId: string, query: string, page: number) =>
-			["search", mailboxId, query, page] as const,
+		infinite: (mailboxId: string, query: string) =>
+			["search", mailboxId, query, "infinite"] as const,
 	},
 	config: ["config"] as const,
 };
