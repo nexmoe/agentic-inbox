@@ -1,5 +1,6 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { createWorkersAI } from "workers-ai-provider";
+import { extractJsonMiddleware, wrapLanguageModel } from "ai";
 import type { LanguageModel } from "ai";
 import { createEmailSummaryModel } from "./email-summary-model.ts";
 
@@ -42,12 +43,45 @@ export function createEmailModel(env: EmailAIEnvironment, purpose: ModelPurpose 
 			transformRequestBody: (body) => isGlm53 ? { ...body, thinking: { type: "enabled" }, reasoning_effort: "low" } : body,
 			// Workers supports manual redirects; do not forward credentials elsewhere.
 			fetch: async (input, init) => {
-				const response = await fetch(input, { ...init, redirect: "manual" });
-				if (response.status >= 300 && response.status < 400) throw new Error("The AI gateway returned an unexpected redirect.");
-				return response;
+				const started = Date.now();
+				console.info("AI gateway request started", { purpose });
+				try {
+					const response = await fetch(input, { ...init, redirect: "manual" });
+					console.info("AI gateway response received", { purpose, status: response.status, durationMs: Date.now() - started });
+					if (response.status >= 300 && response.status < 400) throw new Error("The AI gateway returned an unexpected redirect.");
+					return response;
+				} catch (error) {
+					console.warn("AI gateway request failed", { purpose, name: (error as Error).name, durationMs: Date.now() - started });
+					throw error;
+				}
 			},
 		});
-		return provider.chatModel(env.AI_MODEL.trim());
+		const model = provider.chatModel(env.AI_MODEL.trim());
+		if (!isGlm || purpose !== "summary") return model;
+		return wrapLanguageModel({
+			model,
+			middleware: [
+				{
+					specificationVersion: "v3",
+					transformParams: async ({ params }) => {
+						if (params.responseFormat?.type !== "json" || !params.responseFormat.schema) return params;
+						// JSON mode guarantees JSON syntax, not our fields or constraints.
+						// The compatible provider otherwise discards this schema entirely.
+						const instruction = `Return only a JSON object matching this JSON schema. Include every required field; use empty arrays when no codes or links exist.\nJSON schema:\n${JSON.stringify(params.responseFormat.schema)}`;
+						const systemIndex = params.prompt.findIndex((message) => message.role === "system");
+						const prompt = params.prompt.map((message, index) => index === systemIndex && message.role === "system"
+							? { ...message, content: `${message.content}\n\n${instruction}` } : message);
+						if (systemIndex < 0) prompt.unshift({ role: "system", content: instruction });
+						return { ...params, prompt, responseFormat: { type: "json" } };
+					},
+				},
+				extractJsonMiddleware({
+					// Only unwrap presentation fences. Output.object still validates JSON
+					// and every field; no repair call or extra model request is made.
+					transform: (text) => text.trim().replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/, "").trim(),
+				}),
+			],
+		});
 	}
 	if (env.AI_PROVIDER && env.AI_PROVIDER !== "workers-ai") throw new Error("Unknown AI provider.");
 	if (purpose === "summary") return createEmailSummaryModel(env.AI, env.AI_MODEL, signal ?? AbortSignal.timeout(emailAIRequestTimeoutMs(env)));

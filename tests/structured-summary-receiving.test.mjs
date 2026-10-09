@@ -58,7 +58,7 @@ test("receipt generates structured summaries before details are opened, then ser
 	} finally { await runtime.dispose(); }
 });
 
-test("gateway receipt persists a structured summary without Workers AI and reopening only reads the cache", async () => {
+for (const model of ["gateway-model", "Z-AI/GLM-5.3-Flash"]) test(`${model} receipt persists a structured summary without Workers AI and reopening only reads the cache`, async () => {
 	const bundle = await build({
 		entryPoints: ["tests/fixtures/summary-worker.ts"], bundle: true, write: false,
 		format: "esm", platform: "browser", target: "es2022", external: ["cloudflare:*", "node:*", "path"],
@@ -69,22 +69,26 @@ test("gateway receipt persists a structured summary without Workers AI and reope
 		modules: true, script: bundle.outputFiles[0].text, compatibilityDate: "2025-11-28", compatibilityFlags: ["nodejs_compat"],
 		durableObjects: { MAILBOX: { className: "MailboxDO", useSQLite: true }, EMAIL_AGENT: { className: "SummaryAgent", useSQLite: true } },
 		r2Buckets: ["BUCKET"],
-		bindings: { EMAIL_ADDRESSES: ["team@example.com"], EMAIL_FORWARDING: {}, AI_PROVIDER: "openai-compatible", AI_BASE_URL: "https://gateway.example/openai/v1", AI_MODEL: "gateway-model", AI_API_KEY: "synthetic-test-key" },
+		bindings: { EMAIL_ADDRESSES: ["team@example.com"], EMAIL_FORWARDING: {}, AI_PROVIDER: "openai-compatible", AI_BASE_URL: "https://gateway.example/openai/v1", AI_MODEL: model, AI_API_KEY: "synthetic-test-key" },
 		outboundService: async (request) => {
 			assert.equal(request.url, "https://gateway.example/openai/v1/chat/completions");
 			assert.equal(request.headers.get("Authorization"), "Bearer synthetic-test-key");
 			const inputs = await request.json();
-			assert.equal(inputs.model, "gateway-model");
-			assert.equal(inputs.response_format.json_schema.strict, true);
+			assert.equal(inputs.model, model);
+			if (model.startsWith("Z-AI/GLM-")) {
+				assert.equal(inputs.response_format.type, "json_object");
+				assert.match(inputs.messages.find((message) => message.role === "system").content, /JSON schema:/);
+			} else assert.equal(inputs.response_format.json_schema.strict, true);
 			assert.match(inputs.messages.find((message) => message.role === "user").content, /FULL_GATEWAY_BODY_TAIL/);
 			calls.push(inputs);
-			return Response.json({ id: "synthetic", created: 1, model: "gateway-model", choices: [{ index: 0, finish_reason: "stop", message: { role: "assistant", content: JSON.stringify({ title: "验证登录邮箱", points: ["验证码有效期为 10 分钟。"], codes: [{ label: "验证码", value: "000042" }], links: [] }) } }] });
+			const content = JSON.stringify({ title: "验证登录邮箱", points: ["验证码有效期为 10 分钟。"], codes: [{ label: "验证码", value: "000042" }], links: [{ label: "验证邮箱", sourceId: "link-1", kind: "action" }] });
+			return Response.json({ id: "synthetic", created: 1, model, choices: [{ index: 0, finish_reason: "stop", message: { role: "assistant", content: model.startsWith("Z-AI/GLM-") ? `\n\`\`\`json\n${content}\n\`\`\`\n` : content } }] });
 		},
 	});
 	try {
 		const bucket = await runtime.getR2Bucket("BUCKET");
 		await bucket.put("mailboxes/team@example.com.json", "{}");
-		const raw = ["From: login@example.net", "To: team@example.com", "Subject: Your login code", "Message-ID: <gateway-test@example.net>", "Content-Type: text/html; charset=utf-8", "", "<p>Your code is 000042. It expires in 10 minutes.</p><p>FULL_GATEWAY_BODY_TAIL</p>"].join("\r\n");
+		const raw = ["From: login@example.net", "To: team@example.com", "Subject: Your login code", "Message-ID: <gateway-test@example.net>", "Content-Type: text/html; charset=utf-8", "", '<p>Your code is 000042. It expires in 10 minutes.</p><a href="https://example.net/verify">Verify email</a><p>FULL_GATEWAY_BODY_TAIL</p>'].join("\r\n");
 		assert.equal((await runtime.dispatchFetch("https://test/__receive", { method: "POST", body: raw })).status, 204);
 		const list = await (await runtime.dispatchFetch("https://test/api/v1/emails?folder=inbox")).json();
 		const id = list.emails[0].id;
@@ -98,6 +102,7 @@ test("gateway receipt persists a structured summary without Workers AI and reope
 		assert.equal(state.status, "ready");
 		assert.equal(state.summary.title, "验证登录邮箱");
 		assert.equal(state.summary.details.codes[0].value, "000042");
+		assert.deepEqual(state.summary.details.links, [{ label: "验证邮箱", url: "https://example.net/verify", kind: "action" }]);
 		for (let open = 0; open < 3; open++) assert.equal((await (await runtime.dispatchFetch(summaryUrl)).json()).status, "ready");
 		assert.equal(calls.length, 1);
 		assert.equal((await (await runtime.dispatchFetch("https://test/api/v1/emails?folder=inbox")).json()).emails[0].ai_title, state.summary.title);
