@@ -95,8 +95,8 @@ export class EmailSummaryService {
 	private async prepare(emailId: string) {
 		const deps = this.dependencies;
 		const email = await deps.getEmail(emailId);
-		if (!email) throw new EmailSummaryError("邮件不存在。", 404);
-		if (email.folder_id === deps.draftFolder) throw new EmailSummaryError("草稿无需自动总结。", 400);
+		if (!email) throw new EmailSummaryError("Message not found.", 404);
+		if (email.folder_id === deps.draftFolder) throw new EmailSummaryError("Drafts do not need automatic summaries.", 400);
 
 		const thread = email.thread_id ? await deps.getThread(email.thread_id) : [];
 		const unique = new Map(thread.map((message) => [message.id, message]));
@@ -119,7 +119,7 @@ export class EmailSummaryService {
 			}));
 		const prompt = JSON.stringify({ messages });
 		if (prompt.length > MAX_SUMMARY_INPUT_CHARS) {
-			throw new EmailSummaryError("会话内容过长，暂无法自动总结。", 413);
+			throw new EmailSummaryError("This conversation is too long to summarize.", 413);
 		}
 
 		const fingerprint = await digest(`${EMAIL_SUMMARY_SYSTEM_PROMPT}\n${deps.model}\n${prompt}`);
@@ -142,13 +142,13 @@ export class EmailSummaryService {
 		if (cached?.fingerprint === fingerprint) return cached.result;
 		const existing = this.pending.get(fingerprint);
 		if (existing) return existing;
-		if (this.pending.size >= 2) throw new EmailSummaryError("正在总结其他邮件，请稍后重试。", 429);
+		if (this.pending.size >= 2) throw new EmailSummaryError("Other messages are being summarized. Try again shortly.", 429);
 
 		const job = (async () => {
 			const output = EmailSummaryOutputSchema.safeParse(await deps.generate(prompt));
-			if (!output.success) throw new EmailSummaryError("未生成有效标题和摘要，请重试。", 502);
+			if (!output.success) throw new EmailSummaryError("No valid title or summary was generated. Try again.", 502);
 			if ((await this.prepare(emailId)).fingerprint !== fingerprint) {
-				throw new EmailSummaryError("会话已更新，正在重新总结。", 429);
+				throw new EmailSummaryError("The conversation changed. Generating a new summary.", 429);
 			}
 			const result: EmailSummary = { ...output.data, generatedAt: new Date().toISOString(), messageCount };
 			await deps.saveTitle(emailIds, output.data.title);

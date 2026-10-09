@@ -64,7 +64,7 @@ export default function VirtualMailList({
 	return (
 		<div ref={scrollRef} data-mail-scroll data-mail-loaded-count={emails.length}
 			className="min-h-0 flex-1 overflow-y-auto" onScroll={loadNearBottom}>
-			<div role="list" aria-label="邮件列表" className="relative w-full" style={{ height: totalSize }}>
+			<div role="list" aria-label="Messages" className="relative w-full" style={{ height: totalSize }}>
 				{virtualizer.getVirtualItems().map((item) => {
 					const email = emails[item.index];
 					return (
@@ -81,11 +81,11 @@ export default function VirtualMailList({
 							{email ? renderEmail(email) : (
 								<div className={`flex min-h-16 items-center justify-center gap-3 px-4 py-4 text-kumo-subtle ${typeClass("caption")}`}>
 									{isFetchNextPageError ? <>
-										<span role="alert">暂时无法加载更多邮件。</span>
-										<Button size="sm" variant="secondary" onClick={() => void fetchNextPage({ cancelRefetch: false })} disabled={isFetching}>重试</Button>
+										<span role="alert">Unable to load more messages.</span>
+										<Button size="sm" variant="secondary" onClick={() => void fetchNextPage({ cancelRefetch: false })} disabled={isFetching}>Retry</Button>
 									</> : <span role="status" className="flex items-center gap-2">
 										{isFetchingNextPage && <Loader size="sm" />}
-										{isFetchingNextPage ? "正在加载更多邮件…" : "向下滚动加载更多"}
+										{isFetchingNextPage ? "Loading more messages…" : "Scroll for more"}
 									</span>}
 								</div>
 							)}

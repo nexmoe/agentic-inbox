@@ -23,7 +23,7 @@ export default function MailSearch() {
 	};
 
 	return (
-		<form role="search" aria-label={unified ? "搜索所有邮箱" : "搜索当前邮箱"}
+		<form role="search" aria-label={unified ? "Search all mailboxes" : "Search current mailbox"}
 			className="flex shrink-0 items-center gap-2 border-b border-kumo-line px-4 py-2 md:px-5"
 			onSubmit={(event) => {
 				event.preventDefault();
@@ -31,16 +31,16 @@ export default function MailSearch() {
 				closePanel(); closeSidebar();
 				navigate(`${base}/search?q=${encodeURIComponent(query.trim())}`);
 			}}>
-			<Input type="search" name="q" aria-label="搜索邮件" maxLength={1000}
-				placeholder={unified ? "搜索所有邮箱的标题和正文…" : "搜索当前邮箱的标题和正文…"}
+			<Input type="search" name="q" aria-label="Search messages" maxLength={1000}
+				placeholder={unified ? "Search all mailboxes…" : "Search this mailbox…"}
 				className={`min-w-0 w-full ${fieldTouchClass}`} value={query}
 				onChange={(event) => setQuery(event.target.value)}
 				onKeyDown={(event) => {
 					if (event.key === "Enter" && event.nativeEvent.isComposing) event.preventDefault();
 					if (event.key === "Escape") clear();
 				}} />
-			{(query || urlQuery) && <Button type="button" variant="ghost" shape="square" icon={<XIcon size={16} />} aria-label="清除搜索" onClick={clear} className="shrink-0" />}
-			<Button type="submit" variant="ghost" shape="square" icon={<MagnifyingGlassIcon size={18} />} aria-label="搜索" disabled={!query.trim()} className="shrink-0" />
+			{(query || urlQuery) && <Button type="button" variant="ghost" shape="square" icon={<XIcon size={16} />} aria-label="Clear search" onClick={clear} className="shrink-0" />}
+			<Button type="submit" variant="ghost" shape="square" icon={<MagnifyingGlassIcon size={18} />} aria-label="Search" disabled={!query.trim()} className="shrink-0" />
 		</form>
 	);
 }
