@@ -15,7 +15,7 @@ import { createWorkersAI } from "workers-ai-provider";
 import { z } from "zod";
 import type { EmailFull, EmailMetadata } from "../lib/schemas";
 import { verifyDraft, isPromptInjection } from "../lib/ai";
-import { EmailSummaryService, EmailSummaryError, EmailSummaryOutputSchema, EMAIL_SUMMARY_SYSTEM_PROMPT } from "../lib/email-summary";
+import { EmailSummaryService, EmailSummaryError, EmailSummaryOutputSchema, EMAIL_SUMMARY_SYSTEM_PROMPT, emailSummaryUserPrompt } from "../lib/email-summary";
 import type { EmailSummaryMailbox } from "../lib/email-summary";
 import { createEmailSummaryModel } from "../lib/email-summary-model";
 import {
@@ -319,8 +319,8 @@ export class EmailAgent extends AIChatAgent<any> {
 							model: createEmailSummaryModel(env.AI, env.AI_MODEL, signal),
 							system: EMAIL_SUMMARY_SYSTEM_PROMPT,
 							output: Output.object({ schema: EmailSummaryOutputSchema }),
-							prompt,
-							maxOutputTokens: 1_600,
+							prompt: emailSummaryUserPrompt(prompt),
+							maxOutputTokens: 2_000,
 							maxRetries: 0,
 							abortSignal: signal,
 						});
