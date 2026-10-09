@@ -185,7 +185,7 @@ export function rewriteInlineImages(
 	let result = body;
 	for (const att of attachments) {
 		if (att.disposition === "inline" && att.content_id) {
-			const url = `/api/v1/mailboxes/${mailboxId}/emails/${emailId}/attachments/${att.id}`;
+			const url = getAttachmentUrl(mailboxId, emailId, att.id);
 			// Strip angle brackets from content_id if present
 			const cid = att.content_id.startsWith("<")
 				? att.content_id.slice(1, -1)
@@ -205,7 +205,7 @@ export function getAttachmentUrl(
 	emailId: string,
 	attachmentId: string,
 ): string {
-	return `/api/v1/mailboxes/${mailboxId}/emails/${emailId}/attachments/${attachmentId}`;
+	return `/api/v1/mailboxes/${encodeURIComponent(mailboxId)}/emails/${encodeURIComponent(emailId)}/attachments/${encodeURIComponent(attachmentId)}`;
 }
 
 export function downloadFile(url: string, filename: string) {

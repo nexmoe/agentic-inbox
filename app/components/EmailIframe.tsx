@@ -2,11 +2,19 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
-import DOMPurify from "dompurify";
+import { Button } from "@cloudflare/kumo";
+import { ShieldCheckIcon } from "@phosphor-icons/react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { protectEmailContent, type EmailPrivacyReport } from "~/lib/email-content-privacy";
+import { rewriteInlineImages } from "~/lib/utils";
+import { useInlineEmailImages } from "~/hooks/useInlineEmailImages";
+import type { Attachment } from "~/types";
 
 interface EmailIframeProps {
 	body: string;
+	mailboxId?: string;
+	emailId?: string;
+	attachments?: Attachment[];
 	/** When true, iframe auto-sizes to content height instead of filling parent */
 	autoSize?: boolean;
 }
@@ -24,12 +32,23 @@ interface EmailIframeProps {
  *   script that posts its body height to the parent via `postMessage`.
  *   The `allow-scripts` flag is required for this, but scripts inside
  *   the opaque-origin sandbox cannot access anything useful.
- * - A strict CSP meta tag blocks external resource loads inside the
- *   iframe as a defense-in-depth layer.
+ * - Remote images are blocked before rendering. Loading images applies only
+ *   to this message; hidden pixels and known tracking endpoints stay blocked.
+ * - CSP allows only embedded image bytes by default, disables forms
+ *   and base URLs, and restricts scripts to the nonce-protected height reporter.
+ * - Links always open a separate tab without an opener or referrer. The
+ *   sandbox cannot navigate this frame or the app through sender scripts.
  */
-export default function EmailIframe({ body, autoSize }: EmailIframeProps) {
+export default function EmailIframe({ body, autoSize, mailboxId, emailId, attachments }: EmailIframeProps) {
 	const iframeRef = useRef<HTMLIFrameElement>(null);
 	const [height, setHeight] = useState(autoSize ? 100 : 0);
+	const [report, setReport] = useState<EmailPrivacyReport>();
+	const [frameDocument, setFrameDocument] = useState({ html: "", revision: 0 });
+	const [nonce] = useState(() => crypto.randomUUID().replaceAll("-", ""));
+	const messageKey = `${mailboxId ?? ""}/${emailId ?? ""}`;
+	const [imageConsent, setImageConsent] = useState<{ messageKey: string; body: string }>();
+	const allowRemoteImages = imageConsent?.messageKey === messageKey && imageConsent.body === body;
+	const inlineImages = useInlineEmailImages(body, mailboxId, emailId, attachments);
 
 	// Listen for height reports from the sandboxed iframe
 	const handleMessage = useCallback(
@@ -56,15 +75,13 @@ export default function EmailIframe({ body, autoSize }: EmailIframeProps) {
 	}, [handleMessage]);
 
 	useEffect(() => {
-		const iframe = iframeRef.current;
-		if (!iframe || !body) return;
-
-		const cleanBody = DOMPurify.sanitize(body, {
-			USE_PROFILES: { html: true },
-			FORBID_TAGS: ["style"],
-			ADD_ATTR: ["target"],
-			FORCE_BODY: true,
+		const content = protectEmailContent(rewriteInlineImages(body, mailboxId ?? "", emailId ?? "", attachments), {
+			origin: window.location.origin,
+			inlineImages,
+			allowRemoteImages,
 		});
+		setReport(content.report);
+		const imageSources = allowRemoteImages ? "data: https:" : "data:";
 
 		const padding = autoSize ? "0" : "24px";
 
@@ -72,7 +89,7 @@ export default function EmailIframe({ body, autoSize }: EmailIframeProps) {
 		// Runs inside the opaque-origin sandbox so it has zero access to
 		// the parent page — it can only postMessage.
 		const heightScript = autoSize
-			? `<script>
+			? `<script nonce="${nonce}">
 				function reportHeight() {
 					var h = document.body.scrollHeight;
 					if (h > 0) parent.postMessage({ __emailIframeHeight: true, height: h }, "*");
@@ -84,12 +101,13 @@ export default function EmailIframe({ body, autoSize }: EmailIframeProps) {
 
 		// Use srcdoc so the iframe is truly sandboxed (no same-origin access).
 		// We can't use doc.write() because that requires allow-same-origin.
-		iframe.srcdoc = `<!DOCTYPE html>
+		const html = `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data: cid: https:; script-src 'unsafe-inline';">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; base-uri 'none'; form-action 'none'; style-src 'unsafe-inline'; img-src ${imageSources}; script-src 'nonce-${nonce}';">
 <style>
 * { box-sizing: border-box; }
 html {
@@ -133,17 +151,37 @@ h1, h2, h3 { margin: 8px 0 4px; }
 ul, ol { padding-left: 20px; margin: 4px 0; }
 </style>
 </head>
-<body>${cleanBody}${heightScript}</body>
+<body>${content.html}${heightScript}</body>
 </html>`;
-	}, [body, autoSize]);
+		// Mount each complete document once, keeping its resource policy and
+		// content together when inline images or image consent change.
+		setFrameDocument((previous) => previous.html === html ? previous : { html, revision: previous.revision + 1 });
+	}, [body, autoSize, mailboxId, emailId, attachments, allowRemoteImages, inlineImages, nonce]);
 
 	return (
-		<iframe
-			ref={iframeRef}
-			className="block w-full border-0"
-			style={autoSize ? { height: `${height}px` } : { height: "100%" }}
-			sandbox="allow-scripts allow-popups allow-top-navigation-by-user-activation"
-			title="Email content"
-		/>
+		<div className={autoSize ? "min-w-0" : "flex h-full min-w-0 flex-col"}>
+			{report && (report.trackersBlocked > 0 || report.remoteImages > 0 || report.linksCleaned > 0 || report.remoteContentBlocked) && (
+				<div data-email-privacy className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-kumo-subtle">
+					<ShieldCheckIcon size={14} className="shrink-0" aria-hidden="true" />
+					{report.trackersBlocked > 0 && <span>{report.trackersBlocked} {report.trackersBlocked === 1 ? "tracker" : "trackers"} blocked</span>}
+					{report.remoteImages > 0 && <span>{report.imagesBlocked > 0 ? "Remote images blocked" : "Remote images loaded"}</span>}
+					{report.remoteContentBlocked && <span>Remote styles blocked</span>}
+					{report.linksCleaned > 0 && <span>{report.linksCleaned} {report.linksCleaned === 1 ? "link" : "links"} cleaned</span>}
+					{report.remoteImages > 0 && <Button size="sm" variant="ghost" title="Remote images can reveal your IP address and when you read this message." onClick={() => setImageConsent(allowRemoteImages ? undefined : { messageKey, body })}>
+						{allowRemoteImages ? "Hide images" : "Load images"}
+					</Button>}
+				</div>
+			)}
+			{frameDocument.html && <iframe
+				key={frameDocument.revision}
+				ref={iframeRef}
+				srcDoc={frameDocument.html}
+				className="block w-full border-0"
+				style={autoSize ? { height: `${height}px` } : { flex: 1, minHeight: 0 }}
+				sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
+				referrerPolicy="no-referrer"
+				title="Email content"
+			/>}
+		</div>
 	);
 }

@@ -4,6 +4,7 @@ import { Fragment, useEffect, useState } from "react";
 import { isSummaryLinkUrl, type EmailSummaryCode, type EmailSummaryDetails } from "../../../shared/email-summary";
 import { fontWeights } from "@/lib/font-weight";
 import { typeClass } from "@/lib/type-scale";
+import { cleanEmailLink } from "shared/email-link-privacy";
 
 /** Only emphasis is supported. Email or model HTML and Markdown links stay inert text. */
 function KeyPoint({ text }: { text: string }) {
@@ -59,7 +60,7 @@ export default function SummaryDetails({ details }: { details: EmailSummaryDetai
 				return items.length > 0 && <div key={kind} className="space-y-1.5">
 					<h4 className={`${typeClass("caption")} text-muted-foreground`}>{kind === "action" ? "Actions" : "Links"}</h4>
 					<div className="flex flex-wrap gap-x-5 gap-y-2">
-						{items.map((link) => <a key={link.url} href={link.url} target="_blank" rel="noopener noreferrer" className="min-w-0 max-w-full rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring">
+						{items.map((link) => <a key={link.url} href={cleanEmailLink(link.url)} target="_blank" rel="noopener noreferrer" referrerPolicy="no-referrer" className="min-w-0 max-w-full rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring">
 							<span className={`flex items-start gap-1 text-foreground ${typeClass("body")}`} style={{ fontVariationSettings: fontWeights.semibold }}>
 								<span className="break-words underline decoration-border underline-offset-4">{link.label}</span><ArrowUpRightIcon size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
 							</span>

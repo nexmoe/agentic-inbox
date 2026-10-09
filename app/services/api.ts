@@ -135,8 +135,8 @@ const api = {
 		get<Email[]>(`/api/v1/mailboxes/${mailboxId}/threads/${threadId}`, { signal: opts?.signal }),
 	markThreadRead: (mailboxId: string, threadId: string) =>
 		post<void>(`/api/v1/mailboxes/${mailboxId}/threads/${threadId}/read`),
-	getAttachment: (mailboxId: string, emailId: string, attachmentId: string) =>
-		get<Blob>(`/api/v1/mailboxes/${mailboxId}/emails/${emailId}/attachments/${attachmentId}`, { responseType: "blob" }),
+	getAttachment: (mailboxId: string, emailId: string, attachmentId: string, opts?: { signal?: AbortSignal }) =>
+		get<Blob>(`/api/v1/mailboxes/${encodeURIComponent(mailboxId)}/emails/${encodeURIComponent(emailId)}/attachments/${encodeURIComponent(attachmentId)}`, { responseType: "blob", signal: opts?.signal }),
 	saveDraft: (
 		mailboxId: string,
 		draft: {
