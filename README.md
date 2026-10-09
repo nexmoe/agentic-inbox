@@ -74,6 +74,19 @@ The `AI` binding uses Workers AI directly; no external API key is needed.
 `@cf/zai-org/glm-4.7-flash`, which supports tool calling within the Workers AI free allocation.
 Prompt injection checks and draft review also use Workers AI and share the account's daily allocation.
 
+To use your own OpenAI-compatible gateway, set these fields in the ignored `.cloudflare/deployment.json`:
+
+```json
+{
+  "aiProvider": "openai-compatible",
+  "aiBaseUrl": "https://api.example.com/v1",
+  "aiModel": "your-model-id",
+  "aiPreviousModels": ["@cf/zai-org/glm-4.7-flash"]
+}
+```
+
+Set `AI_API_KEY` as an encrypted Worker secret before deploying; for local development, use `.dev.vars`. The gateway model handles summaries, chat, automatic drafts, prompt injection checks, and draft review. It must support Chat Completions, streaming, tool calls, and structured JSON outputs. Authentication and upstream errors never fall back to Workers AI. `aiPreviousModels` keeps unchanged summaries from up to five earlier models readable without generation; explicit regeneration uses the new model. Gateway credentials stay on the server and are never returned by the app API.
+
 Summaries use the complete text of all saved messages in the thread, excluding unsent drafts. Attachment names and metadata are included; attachment contents are not read. Conversations over 80,000 characters return a visible error rather than a partial summary. Each mailbox allows two concurrent summary generations, with a 25-second model timeout. A durable task starts on receipt and makes at most two attempts on transient errors. Automatic drafts run independently. The same structured response includes a title of at most 32 characters, saved separately from the original subject on the summarized messages. List requests never call AI. Reopening unchanged emails reads the persisted Agent cache without another model call. Existing emails without a summary can be summarized manually; older summaries remain readable and offer a **生成标题** button to upgrade them.
 
 The unified list uses bounded keyset pagination across mailbox Durable Objects. New arrivals do not shift later pages. Cloudflare Access protects the aggregate API under the same policy as individual mailboxes.

@@ -9,7 +9,10 @@
  * - verifyDraft: reviews draft email bodies and removes agent/system artifacts.
  */
 
-import { escapeHtml, stripHtmlToText, textToHtml } from "./email-helpers";
+import { stripHtmlToText, textToHtml } from "./email-helpers";
+import { generateText } from "ai";
+import { createEmailModel } from "./email-ai";
+import type { EmailAIEnvironment } from "./email-ai";
 
 // ── Prompt Injection Scanner ───────────────────────────────────────
 
@@ -21,35 +24,27 @@ Return ONLY "NO" if it is a normal email (even if angry, confused, or containing
 
 Respond with exactly one word: YES or NO.`;
 
-export async function isPromptInjection(ai: Ai, bodyHtml: string | null | undefined): Promise<boolean> {
+export async function isPromptInjection(env: EmailAIEnvironment, bodyHtml: string | null | undefined): Promise<boolean> {
 	if (!bodyHtml) return false;
 	
 	const plainText = stripHtmlToText(bodyHtml).trim();
 	if (plainText.length < 10) return false;
 
 	try {
-		const response = (await ai.run(
-			"@cf/meta/llama-3.1-8b-instruct-fast",
-			{
-				messages: [
-					{ role: "system", content: INJECTION_PROMPT },
-					{ role: "user", content: plainText },
-				],
-				max_tokens: 10,
-				temperature: 0,
-			},
-		)) as { response?: string };
-
-		const result = (response?.response || "NO").trim().toUpperCase();
-		
-		if (result.includes("YES")) {
-			console.warn("Prompt injection detected in incoming email, blocking auto-draft");
+		const signal = AbortSignal.timeout(25_000);
+		const response = await generateText({
+			model: createEmailModel(env, "injection", signal),
+			system: INJECTION_PROMPT, prompt: plainText,
+			maxOutputTokens: env.AI_PROVIDER === "openai-compatible" ? 1_024 : 10, temperature: 0, maxRetries: 0, abortSignal: signal,
+		});
+		if (response.finishReason === "length" || response.text.trim().toUpperCase() !== "NO") {
+			console.warn("Prompt injection check did not return NO, blocking auto-draft");
 			return true;
 		}
 		
 		return false;
 	} catch (e) {
-		console.error("Prompt injection scanner failed, skipping auto-draft:", (e as Error).message);
+		console.error("Prompt injection scanner failed, skipping auto-draft:", (e as Error).name);
 		// Fail closed: treat scanner failures as potential injection to avoid
 		// auto-drafting replies to emails we couldn't verify.
 		// The email is still stored in the inbox — only auto-draft is skipped.
@@ -116,9 +111,9 @@ function splitQuotedBlock(html: string): { reply: string; quoted: string } {
 
 /**
  * Verify and clean a draft email body using AI.
- * Falls back to returning the original body if the AI call fails.
+ * Returns an empty result on failure so callers cannot save an unverified draft.
  */
-export async function verifyDraft(ai: Ai, body: string): Promise<string> {
+export async function verifyDraft(env: EmailAIEnvironment, body: string): Promise<string> {
 	if (!body || !body.trim()) return body;
 
 	// Separate the quoted reply block so the AI only reviews the user's text
@@ -134,19 +129,13 @@ export async function verifyDraft(ai: Ai, body: string): Promise<string> {
 	if (replyText.trim().length < 20) return body;
 
 	try {
-		const response = (await ai.run(
-			"@cf/meta/llama-4-scout-17b-16e-instruct",
-			{
-				messages: [
-					{ role: "system", content: VERIFIER_PROMPT },
-					{ role: "user", content: replyText },
-				],
-				max_tokens: 4096,
-				temperature: 0,
-			},
-		)) as { response?: string };
-
-		const cleaned = response?.response ?? null;
+		const signal = AbortSignal.timeout(25_000);
+		const response = await generateText({
+			model: createEmailModel(env, "verification", signal),
+			system: VERIFIER_PROMPT, prompt: replyText,
+			maxOutputTokens: 4096, temperature: 0, maxRetries: 0, abortSignal: signal,
+		});
+		const cleaned = response.text;
 
 		if (!cleaned || !cleaned.trim()) {
 			// AI returned empty — fall back to original
@@ -182,7 +171,7 @@ export async function verifyDraft(ai: Ai, body: string): Promise<string> {
 			? `${cleanedTrimmed}\n\n${quotedBlock}`
 			: cleanedTrimmed;
 	} catch (e) {
-				console.error("AI failed — returns empty body, callers may save blank draft:", (e as Error).message);
+		console.error("Draft verification failed:", (e as Error).name);
 		return "";
 	}
 }

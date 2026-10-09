@@ -15,8 +15,8 @@ function fixture(messages = [message("first")], options = {}) {
 	const cache = new Map();
 	const calls = [];
 	const titles = [];
-	const createService = (model = "test-model") => new EmailSummaryService({
-		model,
+	const createService = (model = "test-model", previousModels = []) => new EmailSummaryService({
+		model, previousModels,
 		draftFolder: "drafts",
 		getEmail: async (id) => state.messages.find((email) => email.id === id) ?? null,
 		getThread: async (id) => state.messages.filter((email) => email.thread_id === id),
@@ -122,6 +122,18 @@ test("changes to the body or model invalidate the cached summary", async () => {
 	await f.service.summarize("first");
 	await f.createService("another-model").summarize("first");
 	assert.equal(f.calls.length, 3);
+});
+
+test("switching providers keeps unchanged summaries readable without regenerating them", async () => {
+	const f = fixture();
+	const saved = await f.service.summarize("first");
+	const gateway = f.createService("gateway-model", ["test-model"]);
+	assert.deepEqual(await gateway.getSaved("first"), saved);
+	assert.equal(f.calls.length, 1);
+	f.state.messages[0].body = "A new deadline applies.";
+	assert.equal(await gateway.getSaved("first"), undefined);
+	await gateway.summarize("first");
+	assert.equal(f.calls.length, 2);
 });
 
 test("concurrent opens share the same in-flight model call", async () => {

@@ -68,6 +68,7 @@ export interface EmailSummaryMailbox {
 
 interface SummaryDependencies {
 	model: string;
+	previousModels?: string[];
 	draftFolder: string;
 	getEmail: EmailSummaryMailbox["getEmail"];
 	getThread: EmailSummaryMailbox["getThreadEmails"];
@@ -147,15 +148,20 @@ export class EmailSummaryService {
 		const legacyPrompt = JSON.stringify({ messages: legacyMessages });
 		const textFingerprint = await digest(`${TEXT_EMAIL_SUMMARY_SYSTEM_PROMPT}\n${deps.model}\n${legacyPrompt}`);
 		const legacyFingerprint = await digest(`${LEGACY_EMAIL_SUMMARY_SYSTEM_PROMPT}\n${deps.model}\n${legacyPrompt}`);
+		const previousFingerprints = await Promise.all((deps.previousModels ?? []).slice(0, 5).flatMap((model) => [
+			`${EMAIL_SUMMARY_SYSTEM_PROMPT}\n${model}\n${prompt}`,
+			`${TEXT_EMAIL_SUMMARY_SYSTEM_PROMPT}\n${model}\n${legacyPrompt}`,
+			`${LEGACY_EMAIL_SUMMARY_SYSTEM_PROMPT}\n${model}\n${legacyPrompt}`,
+		]).map(digest));
 		const cacheKey = `email-summary:${await digest(email.thread_id || email.id)}`;
-		return { fingerprint, textFingerprint, legacyFingerprint, cacheKey, prompt, messages, sourceLinks, messageCount: messages.length, emailIds: messages.map((message) => message.id) };
+		return { fingerprint, textFingerprint, legacyFingerprint, previousFingerprints, cacheKey, prompt, messages, sourceLinks, messageCount: messages.length, emailIds: messages.map((message) => message.id) };
 	}
 
 	/** Read a saved summary without starting an AI call. */
 	async getSaved(emailId: string): Promise<EmailSummary | undefined> {
-		const { fingerprint, textFingerprint, legacyFingerprint, cacheKey } = await this.prepare(emailId);
+		const { fingerprint, textFingerprint, legacyFingerprint, previousFingerprints, cacheKey } = await this.prepare(emailId);
 		const cached = await this.dependencies.getCached(cacheKey);
-		return cached && [fingerprint, textFingerprint, legacyFingerprint].includes(cached.fingerprint) ? cached.result : undefined;
+		return cached && [fingerprint, textFingerprint, legacyFingerprint, ...previousFingerprints].includes(cached.fingerprint) ? cached.result : undefined;
 	}
 
 	async summarize(emailId: string): Promise<EmailSummary> {

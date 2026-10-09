@@ -10,7 +10,10 @@ interface DeploymentSettings {
 	emailAddresses: string[];
 	emailCatchAll: Record<string, string>;
 	emailForwarding: Record<string, string>;
+	aiProvider: "workers-ai" | "openai-compatible";
+	aiBaseUrl: string;
 	aiModel: string;
+	aiPreviousModels: string[];
 }
 
 const localSettingsPath = ".cloudflare/deployment.json";
@@ -19,7 +22,10 @@ const deployment: DeploymentSettings = {
 	emailAddresses: ["team@example.com"],
 	emailCatchAll: {},
 	emailForwarding: {},
+	aiProvider: "workers-ai",
+	aiBaseUrl: "",
 	aiModel: "@cf/zai-org/glm-4.7-flash",
+	aiPreviousModels: [],
 	...(existsSync(localSettingsPath) ? JSON.parse(readFileSync(localSettingsPath, "utf8")) : {}),
 };
 
@@ -57,7 +63,11 @@ export default defineConfig({
 			EMAIL_AGENT: bindings.durableObject<typeof worker, "EmailAgent">({ worker, exportName: "EmailAgent" }),
 			EMAIL_MCP: bindings.durableObject<typeof worker, "EmailMCP">({ worker, exportName: "EmailMCP" }),
 			AI: bindings.ai(),
+			AI_PROVIDER: bindings.text(deployment.aiProvider),
+			AI_BASE_URL: bindings.text(deployment.aiBaseUrl),
 			AI_MODEL: bindings.text(deployment.aiModel),
+			AI_PREVIOUS_MODELS: bindings.json(deployment.aiPreviousModels),
+			...(deployment.aiProvider === "openai-compatible" ? { AI_API_KEY: bindings.secret() } : {}),
 		},
 	},
 });
