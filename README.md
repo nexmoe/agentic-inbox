@@ -106,7 +106,7 @@ Set `AI_API_KEY` as an encrypted Worker secret before deploying; for local devel
 
 `Z-AI/GLM-5.3-Flash` is supported through a compatible gateway. Its adapter enables low-effort reasoning and uses JSON mode. GLM summary requests also include the complete JSON schema in the system instructions, since JSON mode does not enforce field constraints. Markdown fences around JSON are removed locally; malformed JSON and invalid fields still fail validation without an extra model call. Chat formatting is unchanged. Gateway mode sends email content needed by the selected AI feature to that gateway and uses its quota.
 
-Gateway summaries and draft safety checks have a 90-second deadline per model request; Workers AI retains its 25-second deadline. The summary UI waits up to 100 seconds for a manual request. Automatic summaries keep their existing two-attempt limit and cached summaries remain read-only when opened. Timeouts show a specific error rather than a generic generation failure.
+Gateway summaries and draft safety checks have a 180-second deadline per model request; Workers AI retains its 25-second deadline. The summary UI waits up to 190 seconds for a manual request. Automatic summaries keep their existing two-attempt limit and cached summaries remain read-only when opened. Timeouts show a specific error rather than a generic generation failure.
 
 Gateway diagnostics record the feature, HTTP status, elapsed time, error category, and output size/token counts when validation fails. They never log email bodies, model output, API keys, request headers, or upstream error messages. Use these diagnostics to distinguish timeouts, empty output, invalid JSON, and invalid fields; previously failed messages require an explicit retry.
 

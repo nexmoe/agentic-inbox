@@ -17,7 +17,7 @@ type ModelPurpose = "chat" | "summary" | "injection" | "verification";
 
 /** Reasoning gateways need more time than the small Workers AI models. */
 export function emailAIRequestTimeoutMs(env: Pick<EmailAIEnvironment, "AI_PROVIDER">): number {
-	return env.AI_PROVIDER === "openai-compatible" ? 90_000 : 25_000;
+	return env.AI_PROVIDER === "openai-compatible" ? 180_000 : 25_000;
 }
 
 /** All email AI features use the selected provider, including safety checks. */
