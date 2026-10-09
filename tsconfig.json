@@ -14,6 +14,7 @@
     "skipLibCheck": true,
     "strict": true,
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "types": [
         "./.cloudflare/types/index.d.ts"
     ]
