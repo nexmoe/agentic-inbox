@@ -6,5 +6,8 @@
   "emailForwarding": {
     "team@example.com": "owner@gmail.com"
   },
-  "aiModel": "@cf/zai-org/glm-4.7-flash"
+  "aiProvider": "workers-ai",
+  "aiBaseUrl": "",
+  "aiModel": "@cf/zai-org/glm-4.7-flash",
+  "aiPreviousModels": []
 }

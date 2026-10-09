@@ -11,13 +11,12 @@ import {
 	convertToModelMessages,
 	stepCountIs,
 } from "ai";
-import { createWorkersAI } from "workers-ai-provider";
 import { z } from "zod";
 import type { EmailFull, EmailMetadata } from "../lib/schemas";
 import { verifyDraft, isPromptInjection } from "../lib/ai";
 import { EmailSummaryService, EmailSummaryError, EmailSummaryOutputSchema, EMAIL_SUMMARY_SYSTEM_PROMPT, emailSummaryUserPrompt } from "../lib/email-summary";
 import type { EmailSummaryMailbox } from "../lib/email-summary";
-import { createEmailSummaryModel } from "../lib/email-summary-model";
+import { createEmailModel } from "../lib/email-ai";
 import {
 	getMailboxStub,
 	stripHtmlToText,
@@ -306,6 +305,7 @@ export class EmailAgent extends AIChatAgent<any> {
 			const mailbox = getMailboxStub(env, this.name) as unknown as EmailSummaryMailbox;
 			this.summaryService = new EmailSummaryService({
 				model: env.AI_MODEL,
+				previousModels: env.AI_PREVIOUS_MODELS,
 				draftFolder: Folders.DRAFT,
 				getEmail: (id) => mailbox.getEmail(id),
 				getThread: (id) => mailbox.getThreadEmails(id),
@@ -316,11 +316,11 @@ export class EmailAgent extends AIChatAgent<any> {
 					const signal = AbortSignal.timeout(25_000);
 					try {
 						const result = await generateText({
-							model: createEmailSummaryModel(env.AI, env.AI_MODEL, signal),
+							model: createEmailModel(env, "summary", signal),
 							system: EMAIL_SUMMARY_SYSTEM_PROMPT,
 							output: Output.object({ schema: EmailSummaryOutputSchema }),
 							prompt: emailSummaryUserPrompt(prompt),
-							maxOutputTokens: 2_000,
+							maxOutputTokens: env.AI_PROVIDER === "openai-compatible" ? 4_096 : 2_000,
 							maxRetries: 0,
 							abortSignal: signal,
 						});
@@ -341,12 +341,11 @@ export class EmailAgent extends AIChatAgent<any> {
 	async onChatMessage(onFinish: any) {
 		const env = this.env as Env;
 		const mailboxId = this.name;
-		const workersai = createWorkersAI({ binding: env.AI });
 		const tools = createEmailTools(env, mailboxId);
 		const systemPrompt = await getSystemPrompt(env, mailboxId);
 
 		const result = streamText({
-			model: workersai(env.AI_MODEL),
+			model: createEmailModel(env),
 			system: systemPrompt,
 			messages: await convertToModelMessages(this.messages),
 			tools,
@@ -443,7 +442,6 @@ export class EmailAgent extends AIChatAgent<any> {
 		threadId: string;
 	}) {
 		const env = this.env as Env;
-		const workersai = createWorkersAI({ binding: env.AI });
 		const tools = createEmailTools(env, emailData.mailboxId);
 		const systemPrompt = await getSystemPrompt(env, emailData.mailboxId);
 
@@ -456,7 +454,7 @@ export class EmailAgent extends AIChatAgent<any> {
 		try {
 			const email = (await stub.getEmail(emailData.emailId)) as EmailFull | null;
 			if (email?.body) {
-				const isInjection = await isPromptInjection(env.AI, email.body);
+				const isInjection = await isPromptInjection(env, email.body);
 				if (isInjection) {
 					console.warn("Skipping auto-draft due to detected prompt injection:", emailData.emailId);
 					
@@ -504,7 +502,7 @@ export class EmailAgent extends AIChatAgent<any> {
 			// could plant an injection in an earlier email in the thread
 			// that gets included in the agent's prompt.
 			if (threadContext) {
-				const threadInjection = await isPromptInjection(env.AI, threadContext);
+				const threadInjection = await isPromptInjection(env, threadContext);
 				if (threadInjection) {
 					console.warn("Skipping auto-draft due to prompt injection in thread context:", emailData.threadId);
 					const newMessages = [
@@ -572,7 +570,7 @@ Based on the email content and thread context above, draft a reply using draft_r
 
 		try {
 			const result = await generateText({
-				model: workersai(env.AI_MODEL),
+				model: createEmailModel(env),
 				system: systemPrompt,
 				messages: await convertToModelMessages(messages),
 				tools,
@@ -587,7 +585,7 @@ Based on the email content and thread context above, draft a reply using draft_r
 
 			if (!draftToolCalled && result.text.trim()) {
 				// Model generated a draft inline as text -- verify with AI
-				const sanitizedText = await verifyDraft(env.AI, result.text.trim());
+				const sanitizedText = await verifyDraft(env, result.text.trim());
 				if (!sanitizedText) {
 					// Inline text was entirely agent commentary, skip
 				} else {

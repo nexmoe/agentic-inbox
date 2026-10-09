@@ -27,6 +27,7 @@
 		"typecheck": "npm run cf-typegen && react-router typegen && tsc -b"
 	},
 	"dependencies": {
+		"@ai-sdk/openai-compatible": "^2.0.81",
 		"@base-ui/react": "^1.8.0",
 		"@cloudflare/ai-chat": "^0.1.8",
 		"@cloudflare/kumo": "^1.13.0",
