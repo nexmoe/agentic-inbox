@@ -13,6 +13,7 @@ import {
 } from "@phosphor-icons/react";
 import EmailAttachmentList from "~/components/EmailAttachmentList";
 import EmailIframe from "~/components/EmailIframe";
+import SenderAvatar from "~/components/email-panel/SenderAvatar";
 import {
 	formatDetailDate,
 	formatShortDate,
@@ -38,19 +39,7 @@ interface ThreadMessageProps {
 }
 
 function Avatar({ isDraft, isSelf, sender }: { isDraft?: boolean; isSelf: boolean; sender: string }) {
-	return (
-		<div
-			className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
-				isDraft
-					? "bg-kumo-fill text-kumo-subtle"
-					: isSelf
-						? "bg-kumo-brand text-kumo-inverse"
-						: "bg-kumo-fill text-kumo-default"
-			}`}
-		>
-			{isDraft ? "D" : sender.charAt(0).toUpperCase()}
-		</div>
-	);
+	return <SenderAvatar sender={sender} variant={isDraft ? "draft" : isSelf ? "self" : "default"} />;
 }
 
 export default function ThreadMessage({
@@ -78,7 +67,7 @@ export default function ThreadMessage({
 				<button
 					type="button"
 					onClick={onToggleExpand}
-					className="w-full flex items-center gap-3 px-4 py-3 hover:bg-kumo-tint rounded-lg text-left"
+					className="w-full flex items-center gap-3 px-4 py-3 hover:bg-kumo-tint rounded-lg text-left md:px-6"
 				>
 					<Avatar isDraft={isDraft} isSelf={isSelf} sender={email.sender} />
 					<div className="flex-1 min-w-0">

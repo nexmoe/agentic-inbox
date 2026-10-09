@@ -22,6 +22,7 @@ import { Folders } from "shared/folders";
 import { formatListDate } from "shared/dates";
 import MailboxSplitView from "~/components/MailboxSplitView";
 import MobileSidebarToggle from "~/components/MobileSidebarToggle";
+import SenderAvatar from "~/components/email-panel/SenderAvatar";
 import { Tabs, TabsList, TabItem } from "@/components/ui/tabs";
 import { fontWeights } from "@/lib/font-weight";
 import { typeClass } from "@/lib/type-scale";
@@ -325,8 +326,9 @@ export default function EmailListRoute() {
 										}}
 										className={`group flex items-center gap-3 w-full text-left cursor-pointer transition-colors border-b border-kumo-line px-4 py-3 md:px-5 ${isSelected ? "bg-kumo-tint" : "hover:bg-kumo-tint"}`}
 									>
+										<SenderAvatar sender={email.sender} />
 										{/* Content */}
-										<div className="min-w-0 flex-1">
+										<div data-mail-row-content className="min-w-0 flex-1">
 											{unified && <div className="mb-0.5 truncate text-xs text-kumo-brand">{email.mailbox_id}</div>}
 											<div className="flex items-center gap-2">
 												<span

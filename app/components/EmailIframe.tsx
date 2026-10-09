@@ -78,9 +78,7 @@ export default function EmailIframe({ body, autoSize }: EmailIframeProps) {
 					if (h > 0) parent.postMessage({ __emailIframeHeight: true, height: h }, "*");
 				}
 				reportHeight();
-				setTimeout(reportHeight, 50);
-				setTimeout(reportHeight, 150);
-				setTimeout(reportHeight, 400);
+				new ResizeObserver(reportHeight).observe(document.body);
 			<\/script>`
 			: "";
 

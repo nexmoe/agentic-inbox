@@ -9,7 +9,6 @@ import {
 	ArrowBendDoubleUpLeftIcon,
 	ArrowBendUpLeftIcon,
 	ArrowBendUpRightIcon,
-	ArrowLeftIcon,
 	CodeIcon,
 	DotsThreeVerticalIcon,
 	EnvelopeOpenIcon,
@@ -21,7 +20,7 @@ import {
 	TrashIcon,
 	XIcon,
 } from "@phosphor-icons/react";
-import { DropdownMenu, DropdownTrigger, DropdownContent, DropdownSeparator } from "@/components/ui/dropdown";
+import { DropdownMenu, DropdownTrigger, DropdownContent } from "@/components/ui/dropdown";
 import { MenuItem } from "@/components/ui/menu-item";
 import { Folders } from "shared/folders";
 import type { Folder, Email } from "~/types";
@@ -69,7 +68,7 @@ export default function EmailPanelToolbar({
 
 	return (
 		<div className="mail-pane-header gap-1 px-3 @[480px]:gap-2 @[480px]:px-4" data-mail-header="message" role="toolbar" aria-label="Email actions">
-			<ToolbarAction label="Back to list" icon={<ArrowLeftIcon size={18} />} onClick={onBack} className="md:hidden" />
+			<ToolbarAction label="Close email" icon={<XIcon size={18} />} onClick={onBack} />
 			{isDraftFolder ? <>
 				<Button variant="primary" icon={<PaperPlaneTiltIcon size={18} />} onClick={onSendDraft} loading={isSending} className="h-9">{isSending ? "Sending…" : "Send"}</Button>
 				<ToolbarAction label="Edit draft" icon={<PencilSimpleIcon size={18} />} onClick={onEditDraft} />
@@ -100,8 +99,6 @@ export default function EmailPanelToolbar({
 							<MenuItem index={2} label="Reply All" icon={ArrowBendDoubleUpLeftIcon} onSelect={onReplyAll} />
 							<MenuItem index={3} label="Forward" icon={ArrowBendUpRightIcon} onSelect={onForward} />
 						</>}
-						<DropdownSeparator />
-						<MenuItem index={isDraftFolder ? 2 : 4} label="Close email" icon={XIcon} onSelect={onBack} />
 					</DropdownContent>
 				</DropdownMenu>
 			</div>

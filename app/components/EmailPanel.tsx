@@ -180,13 +180,13 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 				onDelete={handleDelete}
 			/>
 
-			<EmailPanelHeader
-				subject={email.subject}
-				messageCount={allMessages.length}
-				showThreadCount={hasThread}
-			/>
-
 			<div className="flex-1 overflow-y-auto">
+				<EmailPanelHeader
+					subject={email.subject}
+					messageCount={allMessages.length}
+					showThreadCount={hasThread}
+					email={hasThread ? undefined : email}
+				/>
 				{!isDraftFolder && email.folder_id !== Folders.DRAFT && (
 					<EmailSummaryCard
 						key={`${mailboxId}:${email.thread_id || email.id}`}
