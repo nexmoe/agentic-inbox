@@ -3,6 +3,7 @@ export interface UnifiedEmailCursor {
 	mailboxId: string;
 	id: string;
 	folder: string;
+	unreadOnly?: boolean;
 }
 
 export interface UnifiedEmailPage<T> {

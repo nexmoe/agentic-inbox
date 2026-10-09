@@ -17,10 +17,10 @@ interface EmailListResponse {
 
 // ---------- Queries ----------
 
-export function useUnifiedEmails(folder: string, cursor: string, enabled: boolean) {
+export function useUnifiedEmails(folder: string, cursor: string, enabled: boolean, unreadOnly = false) {
 	return useQuery({
-		queryKey: queryKeys.unifiedEmails.list(folder, cursor),
-		queryFn: ({ signal }) => api.listUnifiedEmails({ folder, cursor, limit: "25" }, { signal }),
+		queryKey: queryKeys.unifiedEmails.list(folder, cursor, unreadOnly),
+		queryFn: ({ signal }) => api.listUnifiedEmails({ folder, cursor, limit: "25", unread: String(unreadOnly) }, { signal }),
 		enabled,
 		refetchInterval: cursor ? false : 30_000,
 	});

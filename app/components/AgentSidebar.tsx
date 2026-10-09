@@ -2,8 +2,9 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
-import { Loader } from "@cloudflare/kumo";
-import { PlugsIcon, RobotIcon } from "@phosphor-icons/react";
+import { Button, Loader } from "@cloudflare/kumo";
+import { PlugsIcon, RobotIcon, XIcon } from "@phosphor-icons/react";
+import { useUIStore } from "~/hooks/useUIStore";
 import { useEffect, useState } from "react";
 import MCPPanel from "./MCPPanel";
 
@@ -42,11 +43,12 @@ function LazyAgentPanel() {
 
 export default function AgentSidebar() {
 	const [activeTab, setActiveTab] = useState<"agent" | "mcp">("agent");
+	const toggleAgentPanel = useUIStore((state) => state.toggleAgentPanel);
 
 	return (
 		<div className="flex flex-col h-full">
 			{/* Tab bar */}
-			<div className="flex items-center border-b border-kumo-line shrink-0">
+			<div className="mail-pane-header" data-mail-header="agent">
 				<button
 					type="button"
 					onClick={() => setActiveTab("agent")}
@@ -71,6 +73,7 @@ export default function AgentSidebar() {
 					<PlugsIcon size={14} weight={activeTab === "mcp" ? "fill" : "regular"} />
 					MCP
 				</button>
+				<Button variant="ghost" shape="square" icon={<XIcon size={18} />} aria-label="Hide agent panel" onClick={toggleAgentPanel} className="ml-auto mr-3 h-9 w-9" />
 			</div>
 
 			{/* Tab content — keep agent mounted so chat isn't lost */}

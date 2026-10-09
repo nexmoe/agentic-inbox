@@ -12,16 +12,19 @@ import {
 	FileIcon,
 	PaperPlaneTiltIcon,
 	PencilSimpleIcon,
-	StarIcon,
 	TrashIcon,
 	TrayIcon,
 } from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useParams } from "react-router";
+import { useParams, useSearchParams } from "react-router";
 import { Folders } from "shared/folders";
 import { formatListDate } from "shared/dates";
 import MailboxSplitView from "~/components/MailboxSplitView";
+import MobileSidebarToggle from "~/components/MobileSidebarToggle";
+import { Tabs, TabsList, TabItem } from "@/components/ui/tabs";
+import { fontWeights } from "@/lib/font-weight";
+import { typeClass } from "@/lib/type-scale";
 import { getSnippetText } from "~/lib/utils";
 import {
 	useDeleteEmail,
@@ -84,11 +87,9 @@ const FOLDER_EMPTY_STATES: Record<
 
 function EmailListSkeleton() {
 	return (
-		<div className="animate-pulse space-y-1 p-2">
+		<div className="animate-pulse">
 			{Array.from({ length: 8 }).map((_, i) => (
-				<div key={i} className="flex items-center gap-3 px-3 py-3">
-					<div className="w-4 h-4 rounded bg-kumo-fill" />
-					<div className="w-5 h-5 rounded bg-kumo-fill" />
+				<div key={i} className="px-4 py-3 md:px-5">
 					<div className="flex-1 space-y-2">
 						<div className="flex items-center gap-2">
 							<div className="h-3 w-24 rounded bg-kumo-fill" />
@@ -145,6 +146,8 @@ function FolderEmptyState({
 export default function EmailListRoute() {
 	const unified = useUnifiedMailbox();
 	const { folder } = useParams<{ folder: string }>();
+	const [searchParams, setSearchParams] = useSearchParams();
+	const unreadOnly = searchParams.get("unread") === "true";
 	const mailboxId = useActiveMailboxId();
 	const {
 		selectedEmailId,
@@ -156,6 +159,11 @@ export default function EmailListRoute() {
 	} = useUIStore();
 	const [page, setPage] = useState(1);
 	const [cursors, setCursors] = useState<string[]>([]);
+	const identity = `${unified ? "all" : mailboxId}/${folder}/${unreadOnly}`;
+	const prevFolderRef = useRef(identity);
+	const folderChanged = prevFolderRef.current !== identity;
+	const currentPage = folderChanged ? 1 : page;
+	const currentCursor = folderChanged ? "" : cursors.at(-1) || "";
 
 	const queryClient = useQueryClient();
 	const updateEmail = useUpdateEmail();
@@ -165,14 +173,15 @@ export default function EmailListRoute() {
 	const params = useMemo(
 		() => ({
 			folder: folder || "",
-			page: String(page),
+			page: String(currentPage),
 			limit: String(PAGE_SIZE),
+			unread: String(unreadOnly),
 		}),
-		[folder, page],
+		[folder, currentPage, unreadOnly],
 	);
 
 	const mailboxQuery = useEmails(mailboxId, params, { enabled: !unified, refetchInterval: 30_000 });
-	const unifiedQuery = useUnifiedEmails(folder || Folders.INBOX, cursors.at(-1) || "", unified);
+	const unifiedQuery = useUnifiedEmails(folder || Folders.INBOX, currentCursor, unified, unreadOnly);
 	const activeQuery = unified ? unifiedQuery : mailboxQuery;
 	const emailData = activeQuery.data;
 	const isRefreshing = activeQuery.isFetching;
@@ -188,14 +197,7 @@ export default function EmailListRoute() {
 		return folder ? folder.charAt(0).toUpperCase() + folder.slice(1) : "Inbox";
 	}, [folders, folder]);
 
-	const isPanelOpen = selectedEmailId !== null || isComposing;
-
-	// Track folder identity to detect folder changes vs page changes
-	const prevFolderRef = useRef<string | undefined>(undefined);
-
 	useEffect(() => {
-		const identity = `${unified ? "all" : mailboxId}/${folder}`;
-		const folderChanged = prevFolderRef.current !== identity;
 		prevFolderRef.current = identity;
 
 		if (folderChanged) {
@@ -203,18 +205,13 @@ export default function EmailListRoute() {
 			setPage(1);
 			setCursors([]);
 		}
-	}, [mailboxId, folder, unified, closePanel]);
+	}, [identity, folderChanged, closePanel]);
 
-	const toggleStar = (e: React.MouseEvent, email: Email) => {
-		e.preventDefault();
-		e.stopPropagation();
-		const targetMailboxId = email.mailbox_id || mailboxId;
-		if (targetMailboxId)
-			updateEmail.mutate({
-				mailboxId: targetMailboxId,
-				id: email.id,
-				data: { starred: !email.starred },
-			});
+	const setMailFilter = (value: string) => {
+		const next = new URLSearchParams(searchParams);
+		if (value === "unread") next.set("unread", "true");
+		else next.delete("unread");
+		setSearchParams(next);
 	};
 
 	const handleDelete = (e: React.MouseEvent, email: Email) => {
@@ -289,37 +286,17 @@ export default function EmailListRoute() {
 			isComposing={isComposing}
 		>
 				{/* Folder header */}
-				<div className="flex items-center justify-between px-4 py-3.5 border-b border-kumo-line shrink-0 md:px-5">
-					<h1 className="text-lg font-semibold text-kumo-default">
+				<div className="mail-pane-header gap-2 px-4 md:px-5" data-mail-header="list">
+					<MobileSidebarToggle />
+					<h1 className={`${typeClass("display")} truncate`} style={{ fontVariationSettings: fontWeights.bold }}>
 						{folderName}
 					</h1>
-					<div className="flex items-center gap-1">
-						{totalCount > 0 && (
-							<span className="text-sm text-kumo-subtle mr-2 hidden sm:inline">
-								{unified ? `${totalCount} 封邮件` : `${totalCount} conversation${totalCount !== 1 ? "s" : ""}`}
-							</span>
-						)}
-						<Tooltip
-							content={isRefreshing ? "Refreshing..." : "Refresh"}
-							side="bottom"
-							asChild
-						>
-							<Button
-								variant="ghost"
-								shape="square"
-								size="sm"
-								icon={
-									<ArrowsClockwiseIcon
-										size={18}
-										className={isRefreshing ? "animate-spin" : ""}
-									/>
-								}
-								onClick={handleRefresh}
-								disabled={isRefreshing}
-								aria-label="Refresh"
-							/>
-						</Tooltip>
-					</div>
+					<Tabs value={unreadOnly ? "unread" : "all"} onValueChange={setMailFilter} className="ml-auto shrink-0">
+						<TabsList aria-label="Filter emails">
+							<TabItem value="all" label="All mail" />
+							<TabItem value="unread" label="Unread" />
+						</TabsList>
+					</Tabs>
 				</div>
 
 				{/* Email rows */}
@@ -346,37 +323,8 @@ export default function EmailListRoute() {
 												handleRowClick(email);
 											}
 										}}
-										className={`group flex items-center gap-3 w-full text-left cursor-pointer transition-colors border-b border-kumo-line px-4 py-2.5 md:px-6 md:py-3 ${
-											isPanelOpen ? "md:px-4 md:py-2.5" : ""
-										} ${isSelected ? "bg-kumo-tint" : "hover:bg-kumo-tint"}`}
+										className={`group flex items-center gap-3 w-full text-left cursor-pointer transition-colors border-b border-kumo-line px-4 py-3 md:px-5 ${isSelected ? "bg-kumo-tint" : "hover:bg-kumo-tint"}`}
 									>
-										{/* Unread dot */}
-										<div className="w-2.5 shrink-0 flex justify-center">
-											{hasUnread(email) && (
-												<div className="h-2 w-2 rounded-full bg-kumo-brand" />
-											)}
-										</div>
-
-										{/* Star */}
-										<button
-											type="button"
-											className="shrink-0 p-0.5 bg-transparent border-0 cursor-pointer"
-											onClick={(e) => {
-												e.stopPropagation();
-												toggleStar(e, email);
-											}}
-										>
-											<StarIcon
-												size={16}
-												weight={email.starred ? "fill" : "regular"}
-												className={
-													email.starred
-														? "text-kumo-warning"
-														: "text-kumo-subtle hover:text-kumo-warning"
-												}
-											/>
-										</button>
-
 										{/* Content */}
 										<div className="min-w-0 flex-1">
 											{unified && <div className="mb-0.5 truncate text-xs text-kumo-brand">{email.mailbox_id}</div>}
@@ -386,6 +334,7 @@ export default function EmailListRoute() {
 												>
 													{formatParticipants(email)}
 												</span>
+												{hasUnread(email) && <span className="h-2 w-2 shrink-0 rounded-full bg-kumo-brand" aria-label="Unread" />}
 												{(email.thread_count ?? 1) > 1 && (
 													<span className="shrink-0 text-xs text-kumo-subtle bg-kumo-fill rounded-full px-1.5 py-0.5 font-medium">
 														{email.thread_count}
@@ -456,6 +405,8 @@ export default function EmailListRoute() {
 								);
 							})}
 						</div>
+					) : unreadOnly ? (
+						<div className="px-6 py-24 text-center text-sm text-kumo-subtle">No unread emails</div>
 					) : (
 						<FolderEmptyState
 							folder={folder}
@@ -465,6 +416,10 @@ export default function EmailListRoute() {
 				</div>
 
 				{/* Pagination */}
+				<div className="flex items-center justify-between border-t border-kumo-line px-4 py-2 shrink-0">
+					<span className="text-xs text-kumo-subtle" role="status">{totalCount} {unified ? "封邮件" : `conversation${totalCount === 1 ? "" : "s"}`}</span>
+					<Tooltip content={isRefreshing ? "Refreshing…" : "Refresh"} asChild><Button variant="ghost" shape="square" size="sm" icon={<ArrowsClockwiseIcon size={16} className={isRefreshing ? "animate-spin motion-reduce:animate-none" : ""} />} onClick={handleRefresh} disabled={isRefreshing} aria-label="Refresh" /></Tooltip>
+				</div>
 				{unified && (cursors.length > 0 || unifiedQuery.data?.nextCursor) && <div className="flex items-center justify-center gap-3 border-t border-kumo-line py-3 shrink-0">
 					<Button size="sm" variant="secondary" disabled={cursors.length === 0 || isRefreshing} onClick={() => setCursors((previous) => previous.slice(0, -1))}>上一页</Button>
 					<span className="text-xs text-kumo-subtle">第 {cursors.length + 1} 页</span>
@@ -473,7 +428,7 @@ export default function EmailListRoute() {
 				{!unified && totalCount > PAGE_SIZE && (
 					<div className="flex justify-center py-3 border-t border-kumo-line shrink-0">
 						<Pagination
-							page={page}
+							page={currentPage}
 							setPage={setPage}
 							perPage={PAGE_SIZE}
 							totalCount={totalCount}

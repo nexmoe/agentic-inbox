@@ -33,16 +33,16 @@ function fixture(data) {
 		const db = new DatabaseSync(":memory:");
 		db.exec(`CREATE TABLE emails (id TEXT PRIMARY KEY, subject TEXT, ai_title TEXT, sender TEXT, recipient TEXT, cc TEXT, bcc TEXT, date TEXT,
 		 read INTEGER, starred INTEGER, in_reply_to TEXT, email_references TEXT, thread_id TEXT, folder_id TEXT, body TEXT)`);
-		const insert = db.prepare("INSERT INTO emails (id, date, folder_id, body, subject, ai_title) VALUES (?, ?, ?, ?, ?, ?)");
-		for (const message of messages) insert.run(message.id, message.date, message.folder ?? "inbox", message.body ?? "Full email body", message.subject ?? "Original subject", message.title ?? null);
+		const insert = db.prepare("INSERT INTO emails (id, date, folder_id, body, subject, ai_title, read) VALUES (?, ?, ?, ?, ?, ?, ?)");
+		for (const message of messages) insert.run(message.id, message.date, message.folder ?? "inbox", message.body ?? "Full email body", message.subject ?? "Original subject", message.title ?? null, message.read ? 1 : 0);
 		databases.set(mailboxId, db);
 	}
 	const fetchSizes = [];
-	const page = async (limit, cursor, folder = "inbox") => listUnifiedEmails([...databases.keys()], { folder, limit, cursor }, async (mailboxId, size, before) => {
+	const page = async (limit, cursor, folder = "inbox", unreadOnly = false) => listUnifiedEmails([...databases.keys()], { folder, limit, cursor, unreadOnly }, async (mailboxId, size, before) => {
 		fetchSizes.push(size);
 		const db = databases.get(mailboxId);
-		const query = unifiedEmailsQuery(folder, mailboxId, size, before);
-		return { emails: db.prepare(query.sql).all(...query.params), totalCount: db.prepare("SELECT COUNT(*) AS count FROM emails WHERE folder_id = ?").get(folder).count };
+		const query = unifiedEmailsQuery(folder, mailboxId, size, before, unreadOnly);
+		return { emails: db.prepare(query.sql).all(...query.params), totalCount: db.prepare(`SELECT COUNT(*) AS count FROM emails WHERE folder_id = ? ${unreadOnly ? "AND read = 0" : ""}`).get(folder).count };
 	});
 	return { page, fetchSizes, databases, close: () => { for (const db of databases.values()) db.close(); } };
 }
@@ -115,4 +115,23 @@ test("an unavailable mailbox fails the unified list instead of silently hiding i
 		if (id === "broken") throw new Error("mailbox unavailable");
 		return { emails: [], totalCount: 0 };
 	}), /mailbox unavailable/);
+});
+
+test("unread pagination filters before limiting and carries matching counts across mailboxes", async () => {
+	const f = fixture({
+		"a@example.com": [{ id: "read-new", date: "2026-10-10", read: true }, { id: "unread", date: "2026-10-09" }],
+		"b@example.com": [{ id: "read", date: "2026-10-08", read: true }, { id: "unread-old", date: "2026-10-07" }],
+	});
+	try {
+		const first = await f.page(1, undefined, "inbox", true);
+		assert.deepEqual(first.emails.map((email) => email.id), ["unread"]);
+		assert.equal(first.totalCount, 2);
+		assert.throws(() => decodeUnifiedCursor(first.nextCursor, "inbox"), /Invalid cursor/);
+		const second = await f.page(1, decodeUnifiedCursor(first.nextCursor, "inbox", true), "inbox", true);
+		assert.deepEqual(second.emails.map((email) => email.id), ["unread-old"]);
+		assert.equal(second.nextCursor, null);
+		const all = await f.page(1);
+		assert.equal(all.totalCount, 4);
+		assert.throws(() => decodeUnifiedCursor(all.nextCursor, "inbox", true), /Invalid cursor/);
+	} finally { f.close(); }
 });

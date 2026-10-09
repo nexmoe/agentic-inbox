@@ -13,6 +13,8 @@ import {
 import { WarningIcon } from "@phosphor-icons/react";
 import { MutationCache, QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { forwardRef, useState } from "react";
+import { MotionConfig } from "framer-motion";
+import { ShapeProvider } from "@/lib/shape-context";
 import {
 	isRouteErrorResponse,
 	Links,
@@ -114,15 +116,19 @@ export default function App() {
 	// browser reuses the same singleton across navigations.
 	const [queryClient] = useState(getQueryClient);
 	return (
-		<QueryClientProvider client={queryClient}>
-			<LinkProvider component={KumoLink}>
-				<TooltipProvider>
-					<Toasty>
-						<Outlet />
-					</Toasty>
-				</TooltipProvider>
-			</LinkProvider>
-		</QueryClientProvider>
+		<MotionConfig reducedMotion="user">
+			<ShapeProvider defaultShape="rounded">
+				<QueryClientProvider client={queryClient}>
+					<LinkProvider component={KumoLink}>
+						<TooltipProvider>
+							<Toasty>
+								<Outlet />
+							</Toasty>
+						</TooltipProvider>
+					</LinkProvider>
+				</QueryClientProvider>
+			</ShapeProvider>
+		</MotionConfig>
 	);
 }
 
