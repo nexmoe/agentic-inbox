@@ -8,6 +8,7 @@ interface DeploymentSettings {
 	webDomain?: string;
 	domains: string[];
 	emailAddresses: string[];
+	emailCatchAll: Record<string, string>;
 	emailForwarding: Record<string, string>;
 	aiModel: string;
 }
@@ -16,6 +17,7 @@ const localSettingsPath = ".cloudflare/deployment.json";
 const deployment: DeploymentSettings = {
 	domains: ["example.com"],
 	emailAddresses: ["team@example.com"],
+	emailCatchAll: {},
 	emailForwarding: {},
 	aiModel: "@cf/zai-org/glm-4.7-flash",
 	...(existsSync(localSettingsPath) ? JSON.parse(readFileSync(localSettingsPath, "utf8")) : {}),
@@ -45,6 +47,7 @@ export default defineConfig({
 		env: {
 			DOMAINS: bindings.text(deployment.domains.join(",")),
 			EMAIL_ADDRESSES: bindings.json(deployment.emailAddresses),
+			EMAIL_CATCH_ALL: bindings.json(deployment.emailCatchAll),
 			EMAIL_FORWARDING: bindings.json(deployment.emailForwarding),
 			POLICY_AUD: bindings.secret(),
 			TEAM_DOMAIN: bindings.secret(),

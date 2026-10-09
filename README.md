@@ -92,6 +92,20 @@ npm run deploy
 This checkout uses cf CLI 1.0 beta, Vite 7, and React Router 8. Use Node.js 22.22 or newer.
 The Vite build includes a `build/client` alias so React Router can read assets from cf's Build Output directory.
 
+### Catch-all receiving
+
+To receive every address at a domain in one existing mailbox, set `emailCatchAll` in the local `.cloudflare/deployment.json`:
+
+```json
+{
+  "emailAddresses": ["team@example.com"],
+  "emailCatchAll": { "example.com": "team@example.com" },
+  "emailForwarding": {}
+}
+```
+
+Create the target mailbox, deploy, and enable the domain's Email Routing catch-all rule with **Send to a Worker → agentic-inbox**. Aliases use the SMTP recipient's domain and are stored in the configured mailbox. They keep the original message headers and share that mailbox's Agent; no extra mailboxes are created. Catch-all targets must be in `emailAddresses`. An empty `emailForwarding` disables automatic external copies.
+
 ## Prerequisites
 
 - Cloudflare account with a domain
