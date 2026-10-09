@@ -2,15 +2,39 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import { decodeUnifiedCursor, listUnifiedEmails, unifiedEmailsQuery } from "../workers/lib/unified-inbox.ts";
+import { applyMigrations, mailboxMigrations } from "../workers/durableObject/migrations.ts";
+
+test("AI title migration upgrades existing mailboxes once without changing original messages", () => {
+	const db = new DatabaseSync(":memory:");
+	const sql = { exec: (query, ...params) => {
+		if (/^\s*SELECT\b/i.test(query)) return db.prepare(query).all(...params);
+		db.exec(query);
+		return [];
+	} };
+	const storage = { transactionSync: (callback) => {
+		db.exec("BEGIN");
+		try { const result = callback(); db.exec("COMMIT"); return result; }
+		catch (error) { db.exec("ROLLBACK"); throw error; }
+	} };
+	try {
+		applyMigrations(sql, mailboxMigrations.slice(0, -1), storage);
+		db.prepare("INSERT INTO emails (id, folder_id, subject, body) VALUES (?, ?, ?, ?)").run("old", "inbox", "Original subject", "Original full body");
+		applyMigrations(sql, mailboxMigrations, storage);
+		applyMigrations(sql, mailboxMigrations, storage);
+		const email = db.prepare("SELECT subject, body, ai_title FROM emails WHERE id = ?").get("old");
+		assert.deepEqual({ ...email }, { subject: "Original subject", body: "Original full body", ai_title: null });
+		assert.equal(db.prepare("SELECT COUNT(*) AS count FROM d1_migrations WHERE name = ?").get("9_add_ai_title").count, 1);
+	} finally { db.close(); }
+});
 
 function fixture(data) {
 	const databases = new Map();
 	for (const [mailboxId, messages] of Object.entries(data)) {
 		const db = new DatabaseSync(":memory:");
-		db.exec(`CREATE TABLE emails (id TEXT PRIMARY KEY, subject TEXT, sender TEXT, recipient TEXT, cc TEXT, bcc TEXT, date TEXT,
+		db.exec(`CREATE TABLE emails (id TEXT PRIMARY KEY, subject TEXT, ai_title TEXT, sender TEXT, recipient TEXT, cc TEXT, bcc TEXT, date TEXT,
 		 read INTEGER, starred INTEGER, in_reply_to TEXT, email_references TEXT, thread_id TEXT, folder_id TEXT, body TEXT)`);
-		const insert = db.prepare("INSERT INTO emails (id, date, folder_id, body) VALUES (?, ?, ?, ?)");
-		for (const message of messages) insert.run(message.id, message.date, message.folder ?? "inbox", message.body ?? "Full email body");
+		const insert = db.prepare("INSERT INTO emails (id, date, folder_id, body, subject, ai_title) VALUES (?, ?, ?, ?, ?, ?)");
+		for (const message of messages) insert.run(message.id, message.date, message.folder ?? "inbox", message.body ?? "Full email body", message.subject ?? "Original subject", message.title ?? null);
 		databases.set(mailboxId, db);
 	}
 	const fetchSizes = [];
@@ -35,6 +59,16 @@ test("merges all mailboxes by date and keeps mailbox identity when email IDs ove
 		assert.equal(page.totalCount, 2);
 		assert.equal(page.nextCursor, null);
 		assert.equal((await f.page(25, undefined, "sent")).emails[0].id, "sent");
+	} finally { f.close(); }
+});
+
+test("unified pages carry saved AI titles separately from original subjects", async () => {
+	const f = fixture({ "a@example.com": [{ id: "titled", date: "2026-10-09", title: "周五前审核方案" }, { id: "pending", date: "2026-10-08" }] });
+	try {
+		const page = await f.page(25);
+		assert.equal(page.emails[0].ai_title, "周五前审核方案");
+		assert.equal(page.emails[0].subject, "Original subject");
+		assert.equal(page.emails[1].ai_title, null);
 	} finally { f.close(); }
 });
 

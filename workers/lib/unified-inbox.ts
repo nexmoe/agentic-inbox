@@ -11,7 +11,7 @@ export function unifiedEmailsQuery(folder: string, mailboxId: string, rawLimit: 
 		if (mailboxId === cursor.mailboxId) params.push(cursor.id);
 	}
 	return {
-		sql: `SELECT id, subject, sender, recipient, cc, bcc, date, read, starred, in_reply_to,
+		sql: `SELECT id, subject, ai_title, sender, recipient, cc, bcc, date, read, starred, in_reply_to,
 		 email_references, thread_id, folder_id, SUBSTR(body, 1, 300) AS snippet
 		 FROM emails WHERE ${conditions.join(" AND ")}
 		 ORDER BY COALESCE(date, '') DESC, id ASC LIMIT ?`,

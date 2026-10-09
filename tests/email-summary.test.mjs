@@ -12,6 +12,7 @@ function fixture(messages = [message("first")], options = {}) {
 	const state = { messages };
 	const cache = new Map();
 	const calls = [];
+	const titles = [];
 	const createService = (model = "test-model") => new EmailSummaryService({
 		model,
 		draftFolder: "drafts",
@@ -19,9 +20,10 @@ function fixture(messages = [message("first")], options = {}) {
 		getThread: async (id) => state.messages.filter((email) => email.thread_id === id),
 		getCached: async (key) => { options.onCacheRead?.(); return cache.get(key); },
 		putCached: async (key, value) => { cache.set(key, value); },
-		generate: async (prompt) => { calls.push(JSON.parse(prompt)); return options.generate ? options.generate(prompt) : "请在周五前审核方案。"; },
+		saveTitle: async (emailIds, title) => { await options.onSaveTitle?.(); titles.push({ emailIds, title }); },
+		generate: async (prompt) => { calls.push(JSON.parse(prompt)); return options.generate ? options.generate(prompt) : { title: "周五前审核方案", text: "请在周五前审核方案。" }; },
 	});
-	return { state, cache, calls, createService, service: createService() };
+	return { state, cache, calls, titles, createService, service: createService() };
 }
 
 test("summarizes full chronological bodies and attachment metadata, excluding unsent drafts", async () => {
@@ -33,6 +35,9 @@ test("summarizes full chronological bodies and attachment metadata, excluding un
 	]);
 	const result = await f.service.summarize("reply");
 	assert.equal(result.messageCount, 2);
+	assert.equal(result.title, "周五前审核方案");
+	assert.deepEqual(f.titles, [{ emailIds: ["first", "reply"], title: result.title }]);
+	assert.equal(f.state.messages[0].subject, "Project update");
 	assert.deepEqual(f.calls[0].messages.map((email) => email.id), ["first", "reply"]);
 	assert.match(f.calls[0].messages[1].body, /FINAL DEADLINE: October 12\.$/);
 	assert.equal(f.calls[0].messages[1].attachments[0].filename, "proposal.pdf");
@@ -45,6 +50,22 @@ test("reuses a persisted summary across selected messages and Agent restarts", a
 	const reopened = await f.createService().summarize("reply");
 	assert.deepEqual(reopened, first);
 	assert.equal(f.calls.length, 1);
+	assert.equal(f.titles.length, 1);
+});
+
+test("pre-title cached summaries remain readable and upgrade only on explicit generation", async () => {
+	const f = fixture();
+	const legacy = { text: "旧版摘要", generatedAt: "2026-10-08T12:00:00Z", messageCount: 1 };
+	// Persisted key and fingerprint from the previous release for this fixture.
+	f.cache.set("email-summary:8b34dbc2c05eb4d7e25d48efeace82456b16cee760bcae80c157f52a3c2e787b", {
+		fingerprint: "dba8516d2b06253ffb7d5aca3b2ac7dd9ae0c3806b3bce8411392498062c9d20", result: legacy,
+	});
+	assert.deepEqual(await f.service.getSaved("first"), legacy);
+	assert.equal(f.calls.length, 0);
+	assert.equal(f.titles.length, 0);
+	assert.equal((await f.service.summarize("first")).title, "周五前审核方案");
+	assert.equal(f.calls.length, 1);
+	assert.equal(f.cache.size, 1);
 });
 
 test("opening details only reads summaries saved by background work and never triggers AI", async () => {
@@ -95,7 +116,7 @@ test("concurrent opens share the same in-flight model call", async () => {
 	let reads = 0;
 	const f = fixture(undefined, {
 		onCacheRead: () => { if (++reads === 2) secondRead(); },
-		generate: async () => { started(); await gate; return "Shared summary"; },
+		generate: async () => { started(); await gate; return { title: "共享摘要", text: "Shared summary" }; },
 	});
 	const first = f.service.summarize("first");
 	await began;
@@ -109,7 +130,7 @@ test("concurrent opens share the same in-flight model call", async () => {
 
 test("a failed generation is not cached and can be retried manually", async () => {
 	let attempt = 0;
-	const f = fixture(undefined, { generate: async () => { if (++attempt === 1) throw new Error("quota unavailable"); return "Recovered summary"; } });
+	const f = fixture(undefined, { generate: async () => { if (++attempt === 1) throw new Error("quota unavailable"); return { title: "恢复摘要", text: "Recovered summary" }; } });
 	await assert.rejects(f.service.summarize("first"), /quota unavailable/);
 	assert.equal(f.cache.size, 0);
 	assert.equal((await f.service.summarize("first")).text, "Recovered summary");
@@ -120,6 +141,34 @@ test("an empty model response is treated as a retryable failure", async () => {
 	const f = fixture(undefined, { generate: async () => "  " });
 	await assert.rejects(f.service.summarize("first"), (error) => error.status === 502);
 	assert.equal(f.cache.size, 0);
+});
+
+test("invalid, empty, overlong, or multiline titles cannot replace the list subject", async () => {
+	for (const output of [null, "plain text", {}, { title: "   ", text: "Summary" }, { title: "字".repeat(33), text: "Summary" }, { title: "第一行\n第二行", text: "Summary" }, { title: "标题", text: " " }, { title: 12, text: "Summary" }]) {
+		const f = fixture(undefined, { generate: async () => output });
+		await assert.rejects(f.service.summarize("first"), (error) => error.status === 502);
+		assert.equal(f.cache.size, 0);
+		assert.equal(f.titles.length, 0);
+	}
+});
+
+test("a title write failure does not mark the summary as ready and can be retried", async () => {
+	let writes = 0;
+	const f = fixture(undefined, { onSaveTitle: async () => { if (++writes === 1) throw new Error("storage unavailable"); } });
+	await assert.rejects(f.service.summarize("first"), /storage unavailable/);
+	assert.equal(await f.service.getSaved("first"), undefined);
+	assert.equal((await f.service.summarize("first")).title, "周五前审核方案");
+	assert.equal(f.titles.length, 1);
+});
+
+test("a reply arriving during generation cannot publish an outdated conversation title", async () => {
+	const f = fixture(undefined, { generate: async () => {
+		f.state.messages.push(message("reply", { date: "2026-10-10T10:00:00Z" }));
+		return { title: "过期标题", text: "Outdated summary" };
+	} });
+	await assert.rejects(f.service.summarize("first"), (error) => error.status === 429);
+	assert.equal(f.cache.size, 0);
+	assert.equal(f.titles.length, 0);
 });
 
 test("missing emails and drafts never trigger AI", async () => {
@@ -148,7 +197,7 @@ test("each mailbox permits at most two simultaneous generations", async () => {
 	const bothStarted = new Promise((resolve) => { started = resolve; });
 	let starts = 0;
 	const f = fixture([message("a", { thread_id: "a" }), message("b", { thread_id: "b" }), message("c", { thread_id: "c" })], {
-		generate: async () => { if (++starts === 2) started(); await gate; return "Summary"; },
+		generate: async () => { if (++starts === 2) started(); await gate; return { title: "摘要标题", text: "Summary" }; },
 	});
 	const first = f.service.summarize("a");
 	const second = f.service.summarize("b");

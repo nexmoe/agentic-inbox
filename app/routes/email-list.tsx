@@ -332,7 +332,8 @@ export default function EmailListRoute() {
 						<div>
 							{emails.map((email) => {
 								const isSelected = selectedEmailId === email.id && (!unified || mailboxId === email.mailbox_id);
-								const snippet = getSnippetText(email.snippet);
+								const aiTitle = email.ai_title?.trim();
+								const snippet = aiTitle ? "" : getSnippetText(email.snippet);
 								return (
 									<div
 										key={`${email.mailbox_id || mailboxId}:${email.id}`}
@@ -410,7 +411,7 @@ export default function EmailListRoute() {
 												<span
 													className={hasUnread(email) ? "font-medium text-kumo-default" : "text-kumo-subtle"}
 												>
-													{email.subject}
+													{aiTitle || email.subject}
 												</span>
 											{snippet && (
 												<span className="text-kumo-subtle font-normal">

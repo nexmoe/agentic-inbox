@@ -6,6 +6,8 @@ import { AIChatAgent } from "@cloudflare/ai-chat";
 import {
 	streamText,
 	generateText,
+	Output,
+	NoObjectGeneratedError,
 	convertToModelMessages,
 	stepCountIs,
 } from "ai";
@@ -13,8 +15,9 @@ import { createWorkersAI } from "workers-ai-provider";
 import { z } from "zod";
 import type { EmailFull, EmailMetadata } from "../lib/schemas";
 import { verifyDraft, isPromptInjection } from "../lib/ai";
-import { EmailSummaryService, EmailSummaryError, EMAIL_SUMMARY_SYSTEM_PROMPT } from "../lib/email-summary";
+import { EmailSummaryService, EmailSummaryError, EmailSummaryOutputSchema, EMAIL_SUMMARY_SYSTEM_PROMPT } from "../lib/email-summary";
 import type { EmailSummaryMailbox } from "../lib/email-summary";
+import { createEmailSummaryModel } from "../lib/email-summary-model";
 import {
 	getMailboxStub,
 	stripHtmlToText,
@@ -301,7 +304,6 @@ export class EmailAgent extends AIChatAgent<any> {
 		if (!this.summaryService) {
 			const env = this.env as Env;
 			const mailbox = getMailboxStub(env, this.name) as unknown as EmailSummaryMailbox;
-			const workersai = createWorkersAI({ binding: env.AI });
 			this.summaryService = new EmailSummaryService({
 				model: env.AI_MODEL,
 				draftFolder: Folders.DRAFT,
@@ -309,19 +311,27 @@ export class EmailAgent extends AIChatAgent<any> {
 				getThread: (id) => mailbox.getThreadEmails(id),
 				getCached: (key) => this.ctx.storage.get(key),
 				putCached: (key, value) => this.ctx.storage.put(key, value),
+				saveTitle: (emailIds, title) => mailbox.saveEmailTitle(emailIds, title),
 				generate: async (prompt) => {
-					const result = await generateText({
-						model: workersai(env.AI_MODEL, env.AI_MODEL === "@cf/zai-org/glm-4.7-flash"
-							? { chat_template_kwargs: { enable_thinking: false } }
-							: undefined),
-						system: EMAIL_SUMMARY_SYSTEM_PROMPT,
-						prompt,
-						maxOutputTokens: 1_600,
-						maxRetries: 0,
-						abortSignal: AbortSignal.timeout(25_000),
-					});
-					if (result.finishReason === "length") throw new EmailSummaryError("摘要生成未完成，请重试。", 502);
-					return result.text;
+					const signal = AbortSignal.timeout(25_000);
+					try {
+						const result = await generateText({
+							model: createEmailSummaryModel(env.AI, env.AI_MODEL, signal),
+							system: EMAIL_SUMMARY_SYSTEM_PROMPT,
+							output: Output.object({ schema: EmailSummaryOutputSchema }),
+							prompt,
+							maxOutputTokens: 1_600,
+							maxRetries: 0,
+							abortSignal: signal,
+						});
+						if (result.finishReason === "length") throw new EmailSummaryError("摘要生成未完成，请重试。", 502);
+						return result.output;
+					} catch (error) {
+						if (NoObjectGeneratedError.isInstance(error)) {
+							throw new EmailSummaryError(error.finishReason === "length" ? "摘要生成未完成，请重试。" : "未生成有效标题和摘要，请重试。", 502);
+						}
+						throw error;
+					}
 				},
 			});
 		}
