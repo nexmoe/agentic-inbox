@@ -101,7 +101,14 @@ app.get("/api/v1/config", (c) => {
 
 app.get("/api/v1/mailboxes", async (c) => {
 	const allMailboxes = await listMailboxes(c.env.BUCKET);
-	return c.json(allMailboxes.map((m) => ({ ...m, name: m.id })));
+	const catchAll = Object.entries(c.env.EMAIL_CATCH_ALL ?? {});
+	return c.json(allMailboxes.map((m) => ({
+		...m,
+		name: m.id,
+		catchAllDomains: catchAll
+			.filter(([, target]) => target.trim().toLowerCase() === m.email.toLowerCase())
+			.map(([domain]) => domain.toLowerCase()),
+	})));
 });
 
 app.post("/api/v1/mailboxes", async (c) => {
