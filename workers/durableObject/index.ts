@@ -340,7 +340,6 @@ export class MailboxDO extends DurableObject<Env> {
 				SELECT
 					conversation_id,
 					COUNT(*) as thread_count,
-					SUM(CASE WHEN read = 0 THEN 1 ELSE 0 END) as thread_unread_count,
 					SUM(CASE WHEN read = 1 THEN 1 ELSE 0 END) as thread_read_count,
 					GROUP_CONCAT(DISTINCT sender) as participants,
 					SUM(CASE WHEN folder_id = (SELECT id FROM folders WHERE name = 'draft' LIMIT 1) THEN 1 ELSE 0 END) as has_draft
@@ -378,7 +377,7 @@ export class MailboxDO extends DurableObject<Env> {
 				lif.read, lif.starred, lif.thread_id, lif.folder_id,
 				lif.in_reply_to, lif.email_references,
 				SUBSTR(lif.body, 1, 300) as snippet,
-				cs.thread_count, cs.thread_unread_count, cs.participants,
+				cs.thread_count, lif.folder_unread_count AS thread_unread_count, cs.participants,
 				CASE WHEN lmc.folder_id != (SELECT id FROM folders WHERE name = 'sent' LIMIT 1)
 					AND lmc.folder_id != (SELECT id FROM folders WHERE name = 'draft' LIMIT 1)
 					AND cs.thread_read_count > 0
