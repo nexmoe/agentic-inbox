@@ -12,7 +12,8 @@ export default {
 				for (const email of emails) {
 					await stub.createEmail(email.folder ?? "inbox", {
 						sender: "sender@example.net", recipient: mailboxId, body: "Test body", ...email,
-					}, []);
+					}, email.attachments ?? []);
+					if (email.ai_title) await stub.saveEmailTitle([email.id], email.ai_title);
 				}
 			}
 			return new Response(null, { status: 204 });

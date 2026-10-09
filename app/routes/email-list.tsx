@@ -22,6 +22,7 @@ import { Folders } from "shared/folders";
 import { formatListDate } from "shared/dates";
 import MailboxSplitView from "~/components/MailboxSplitView";
 import MobileSidebarToggle from "~/components/MobileSidebarToggle";
+import MailSearch from "~/components/MailSearch";
 import VirtualMailList from "~/components/VirtualMailList";
 import { flattenEmailPages } from "~/lib/email-pages";
 import SenderAvatar from "~/components/email-panel/SenderAvatar";
@@ -290,6 +291,7 @@ export default function EmailListRoute() {
 					</Tabs>
 				</div>
 
+				<MailSearch />
 				{/* Only the visible portion of loaded pages is mounted. */}
 				{emails.length > 0 ? (
 					<VirtualMailList

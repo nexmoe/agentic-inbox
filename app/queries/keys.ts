@@ -23,6 +23,7 @@ export const queryKeys = {
 	unifiedEmails: {
 		all: ["unified-emails"] as const,
 		infinite: (folder: string, unreadOnly = false) => ["unified-emails", "infinite", folder, unreadOnly] as const,
+		search: (query: string) => ["unified-emails", "search", query, "infinite"] as const,
 	},
 	folders: {
 		list: (mailboxId: string) => ["folders", mailboxId] as const,

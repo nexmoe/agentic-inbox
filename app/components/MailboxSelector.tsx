@@ -1,5 +1,5 @@
 import { EnvelopeIcon, StackIcon } from "@phosphor-icons/react";
-import { useNavigate, useParams, useSearchParams } from "react-router";
+import { useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import { SYSTEM_FOLDER_IDS, Folders } from "shared/folders";
 import { useActiveMailboxId, useUnifiedMailbox } from "~/hooks/useActiveMailbox";
@@ -13,6 +13,7 @@ export default function MailboxSelector() {
 	const { folder } = useParams<{ folder: string }>();
 	const [searchParams] = useSearchParams();
 	const navigate = useNavigate();
+	const location = useLocation();
 	const { closePanel, closeComposeModal, closeSidebar, selectMailbox } = useUIStore();
 
 	const selectMailboxView = (value: string) => {
@@ -20,6 +21,13 @@ export default function MailboxSelector() {
 		closePanel();
 		closeComposeModal();
 		closeSidebar();
+		if (location.pathname.endsWith("/search")) {
+			const query = searchParams.toString();
+			if (value !== "all") selectMailbox(value);
+			const base = value === "all" ? "/all" : `/mailbox/${encodeURIComponent(value)}`;
+			navigate(`${base}/search${query ? `?${query}` : ""}`);
+			return;
+		}
 		const targetFolder = (SYSTEM_FOLDER_IDS as readonly string[]).includes(folder ?? "") ? folder : Folders.INBOX;
 		const query = searchParams.get("unread") === "true" ? "?unread=true" : "";
 		if (value === "all") {

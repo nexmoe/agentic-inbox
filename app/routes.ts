@@ -13,6 +13,7 @@ export default [
 	route("all", "routes/unified-mailbox.tsx", [
 		index("routes/unified-index.tsx"),
 		route("emails/:folder", "routes/unified-email-list.tsx"),
+		route("search", "routes/unified-search-results.tsx"),
 	]),
 	route("mailbox/:mailboxId", "routes/mailbox.tsx", [
 		index("routes/mailbox-index.tsx"),

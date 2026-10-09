@@ -20,6 +20,8 @@ import { SendEmailRequestSchema } from "./lib/schemas";
 import { handleReplyEmail, handleForwardEmail } from "./routes/reply-forward";
 import { Folders, SYSTEM_FOLDER_IDS } from "../shared/folders";
 import { decodeUnifiedCursor, listUnifiedEmails } from "./lib/unified-inbox";
+import { decodeSearchCursor, listUnifiedSearch } from "./lib/email-search";
+import type { EmailSearchFilters } from "../shared/email-search";
 import type { Env } from "./types";
 import { requireMailbox, type MailboxContext } from "./lib/mailbox";
 
@@ -340,17 +342,42 @@ app.delete("/api/v1/mailboxes/:mailboxId/folders/:id", async (c: AppContext) => 
 
 // -- Search ---------------------------------------------------------
 
-app.get("/api/v1/mailboxes/:mailboxId/search", async (c: AppContext) => {
-	const searchOpts: Record<string, unknown> = {
+function readSearchFilters(c: AppContext): EmailSearchFilters {
+	return {
 		query: c.req.query("query") || "", folder: c.req.query("folder"), from: c.req.query("from"),
 		to: c.req.query("to"), subject: c.req.query("subject"), date_start: c.req.query("date_start"),
 		date_end: c.req.query("date_end"), is_read: boolQuery(c, "is_read"),
 		is_starred: boolQuery(c, "is_starred"), has_attachment: boolQuery(c, "has_attachment"),
 	};
-	const stub = c.var.mailboxStub as any;
+}
+
+app.get("/api/v1/search", async (c) => {
+	const filters = readSearchFilters(c);
+	const limit = Number(c.req.query("limit") || 25);
+	if (!Number.isInteger(limit) || limit < 1 || limit > 50) return c.json({ error: "Invalid limit" }, 400);
+	let cursor;
+	try {
+		const raw = c.req.query("cursor");
+		cursor = raw ? decodeSearchCursor(raw, filters) : undefined;
+	} catch { return c.json({ error: "Invalid search cursor" }, 400); }
+	const mailboxes = await listMailboxes(c.env.BUCKET);
+	const page = await listUnifiedSearch(mailboxes.map((mailbox) => mailbox.id), filters, limit, cursor, async (mailboxId, batchSize, before) => {
+		const stub = c.env.MAILBOX.get(c.env.MAILBOX.idFromName(mailboxId));
+		const [emails, totalCount] = await Promise.all([
+			stub.searchEmails({ ...filters, limit: batchSize, cursor: before, mailboxId }),
+			stub.countSearchResults(filters),
+		]);
+		return { emails, totalCount };
+	});
+	return c.json(page, 200, { "Cache-Control": "no-store" });
+});
+
+app.get("/api/v1/mailboxes/:mailboxId/search", async (c: AppContext) => {
+	const searchOpts = readSearchFilters(c);
+	const stub = c.var.mailboxStub;
 	const emails = await stub.searchEmails({ ...searchOpts, page: intQuery(c, "page"), limit: intQuery(c, "limit") });
 	const totalCount = await stub.countSearchResults(searchOpts);
-	return c.json({ emails, totalCount });
+	return c.json({ emails, totalCount }, 200, { "Cache-Control": "no-store" });
 });
 
 // -- Attachments ----------------------------------------------------
