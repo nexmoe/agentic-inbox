@@ -24,6 +24,7 @@ import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useUIStore } from "~/hooks/useUIStore";
 import type { UIMessage } from "ai";
+import { cleanEmailLink } from "shared/email-link-privacy";
 
 const TOOL_LABELS: Record<string, { label: string; icon: React.ReactNode }> = {
 	list_emails: {
@@ -185,9 +186,10 @@ function MessageBubble({
 										components={{
 											a: ({ href, children }) => (
 												<a
-													href={href}
+													href={href ? cleanEmailLink(href) : undefined}
 													target="_blank"
 													rel="noopener noreferrer"
+													referrerPolicy="no-referrer"
 													style={{
 														color: "var(--color-link)",
 														textDecoration: "underline",

@@ -17,7 +17,6 @@ import SenderAvatar from "~/components/email-panel/SenderAvatar";
 import {
 	formatDetailDate,
 	formatShortDate,
-	rewriteInlineImages,
 	stripHtml,
 } from "~/lib/utils";
 import type { Email } from "~/types";
@@ -147,12 +146,10 @@ export default function ThreadMessage({
 
 				<div className="md:ml-[42px]">
 					<EmailIframe
-						body={rewriteInlineImages(
-							email.body || "",
-							mailboxId || "",
-							email.id,
-							email.attachments,
-						)}
+						body={email.body || ""}
+						mailboxId={mailboxId}
+						emailId={email.id}
+						attachments={email.attachments}
 						autoSize
 					/>
 				</div>
