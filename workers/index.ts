@@ -24,6 +24,7 @@ import { decodeSearchCursor, listUnifiedSearch } from "./lib/email-search";
 import type { EmailSearchFilters } from "../shared/email-search";
 import type { Env } from "./types";
 import { requireMailbox, type MailboxContext } from "./lib/mailbox";
+import { resolveIncomingMailbox } from "./lib/incoming-recipient";
 
 type AppContext = Context<MailboxContext>;
 
@@ -420,16 +421,16 @@ async function receiveEmail(event: { raw: ReadableStream; rawSize: number; to: s
 	const rawEmail = await streamToArrayBuffer(event.raw, event.rawSize);
 	const parsedEmail = await new PostalMime().parse(rawEmail);
 
-	const allowedAddresses = ((env.EMAIL_ADDRESSES ?? []) as string[]).map((a) => a.toLowerCase());
 	const allRecipients = (parsedEmail.to || []).map((t) => t.address?.toLowerCase()).filter(Boolean) as string[];
 	const ccRecipients = (parsedEmail.cc || []).map((e) => e.address?.toLowerCase()).filter(Boolean) as string[];
 	const bccRecipients = (parsedEmail.bcc || []).map((e) => e.address?.toLowerCase()).filter(Boolean) as string[];
 
-	// The SMTP recipient identifies the mailbox, including CC/BCC and multi-address deliveries.
-	const mailboxId = event.to.toLowerCase();
-	if (!mailboxId) throw new Error("received email with no valid recipient address");
-	if (allowedAddresses.length > 0 && !allowedAddresses.includes(mailboxId)) {
-		console.log(`Ignoring email: recipient is not in EMAIL_ADDRESSES.`);
+	// Use the SMTP recipient for direct delivery and configured domain catch-alls,
+	// including CC/BCC deliveries whose To header names a different address.
+	if (!event.to.trim()) throw new Error("received email with no valid recipient address");
+	const mailboxId = resolveIncomingMailbox(event.to, env.EMAIL_ADDRESSES ?? [], env.EMAIL_CATCH_ALL ?? {});
+	if (!mailboxId) {
+		console.log("Ignoring email: recipient has no configured mailbox.");
 		return;
 	}
 
