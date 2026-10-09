@@ -329,6 +329,12 @@ export class EmailAgent extends AIChatAgent<any> {
 					} catch (error) {
 						if (signal.aborted) throw new EmailSummaryError("Summary generation timed out. Try again.", 502);
 						if (NoObjectGeneratedError.isInstance(error)) {
+							const cause = error.cause instanceof Error ? error.cause.name : undefined;
+							console.warn("Email summary output rejected", {
+								reason: !error.text?.trim() ? "empty-output" : cause === "AI_JSONParseError" ? "invalid-json" : "invalid-fields",
+								finishReason: error.finishReason, outputChars: error.text?.length ?? 0,
+								inputTokens: error.usage?.inputTokens, outputTokens: error.usage?.outputTokens,
+							});
 							throw new EmailSummaryError(error.finishReason === "length" ? "Summary generation was incomplete. Try again." : "No valid title or summary was generated. Try again.", 502);
 						}
 						throw error;

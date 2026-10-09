@@ -4,7 +4,7 @@ import { build } from "esbuild";
 import { Miniflare } from "miniflare";
 import api from "../app/services/api.ts";
 
-test("a gateway summary that takes 35 seconds is saved and cached", { timeout: 65_000 }, async () => {
+test("a gateway summary that takes 95 seconds is saved and cached", { timeout: 125_000 }, async () => {
 	const bundle = await build({
 		entryPoints: ["tests/fixtures/summary-worker.ts"], bundle: true, write: false,
 		format: "esm", platform: "browser", target: "es2022", external: ["cloudflare:*", "node:*", "path"],
@@ -18,7 +18,7 @@ test("a gateway summary that takes 35 seconds is saved and cached", { timeout: 6
 		bindings: { EMAIL_ADDRESSES: ["team@example.com"], EMAIL_FORWARDING: {}, AI_PROVIDER: "openai-compatible", AI_BASE_URL: "https://gateway.example/openai/v1", AI_MODEL: "Z-AI/GLM-5.3-Flash", AI_API_KEY: "synthetic-test-key" },
 		outboundService: async () => {
 			calls++;
-			await new Promise((resolve) => setTimeout(resolve, 35_000));
+			await new Promise((resolve) => setTimeout(resolve, 95_000));
 			return Response.json({ id: "synthetic", created: 1, model: "Z-AI/GLM-5.3-Flash", choices: [{ index: 0, finish_reason: "stop", message: { role: "assistant", content: JSON.stringify({ title: "审核仍在进行", points: ["提交的链接仍在审核中。"], codes: [], links: [] }) } }] });
 		},
 	});
@@ -34,9 +34,9 @@ test("a gateway summary that takes 35 seconds is saved and cached", { timeout: 6
 		const seedPending = (ageMs) => runtime.dispatchFetch("https://test/__summary-state", {
 			method: "POST", body: JSON.stringify({ emailId, state: { status: "pending", queuedAt: new Date(Date.now() - ageMs).toISOString() } }),
 		});
-		await seedPending(150_000);
+		await seedPending(300_000);
 		assert.equal((await (await runtime.dispatchFetch(url)).json()).status, "pending", "The second gateway attempt must not be reported as stale");
-		await seedPending(220_000);
+		await seedPending(400_000);
 		assert.equal((await (await runtime.dispatchFetch(url)).json()).status, "error", "Abandoned jobs still time out");
 		await seedPending(0);
 		const response = await runtime.dispatchFetch(url, { method: "POST" });
@@ -55,13 +55,13 @@ test("the summary client waits for slow generation while ordinary requests keep 
 	// Compress wall time while exercising the actual AbortController/fetch path.
 	const realSetTimeout = globalThis.setTimeout;
 	t.mock.method(globalThis, "setTimeout", (callback, delay, ...args) => realSetTimeout(callback, delay / 1_000, ...args));
-	let responseDelay = 40;
+	let responseDelay = 140;
 	t.mock.method(globalThis, "fetch", async (_url, init) => new Promise((resolve, reject) => {
 		const timer = realSetTimeout(() => resolve(Response.json({ title: "Ready" })), responseDelay);
 		init.signal.addEventListener("abort", () => { clearTimeout(timer); reject(init.signal.reason); }, { once: true });
 	}));
 	assert.equal((await api.summarizeEmail("team@example.com", "synthetic-id")).title, "Ready");
-	responseDelay = 150;
+	responseDelay = 250;
 	await assert.rejects(api.summarizeEmail("team@example.com", "synthetic-id"), { name: "AbortError" });
 	responseDelay = 40;
 	await assert.rejects(api.getConfig(), { name: "AbortError" });
