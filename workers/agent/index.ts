@@ -294,7 +294,7 @@ export class EmailAgent extends AIChatAgent<any> {
 		} catch (error) {
 			await this.ctx.storage.put(key, {
 				status: "error",
-				error: error instanceof EmailSummaryError ? error.message : "暂时无法生成摘要，请重试。",
+				error: error instanceof EmailSummaryError ? error.message : "Unable to generate a summary. Try again.",
 			});
 			if (!(error instanceof EmailSummaryError) || error.status === 429 || error.status === 502) throw error;
 		}
@@ -324,11 +324,11 @@ export class EmailAgent extends AIChatAgent<any> {
 							maxRetries: 0,
 							abortSignal: signal,
 						});
-						if (result.finishReason === "length") throw new EmailSummaryError("摘要生成未完成，请重试。", 502);
+						if (result.finishReason === "length") throw new EmailSummaryError("Summary generation was incomplete. Try again.", 502);
 						return result.output;
 					} catch (error) {
 						if (NoObjectGeneratedError.isInstance(error)) {
-							throw new EmailSummaryError(error.finishReason === "length" ? "摘要生成未完成，请重试。" : "未生成有效标题和摘要，请重试。", 502);
+							throw new EmailSummaryError(error.finishReason === "length" ? "Summary generation was incomplete. Try again." : "No valid title or summary was generated. Try again.", 502);
 						}
 						throw error;
 					}
@@ -365,35 +365,39 @@ export class EmailAgent extends AIChatAgent<any> {
 		const url = new URL(request.url);
 		if (url.pathname === "/emailSummary" && request.method === "GET") {
 			const emailId = url.searchParams.get("emailId");
-			if (!emailId || emailId.length > 256) return Response.json({ error: "邮件 ID 无效。" }, { status: 400 });
+			if (!emailId || emailId.length > 256) return Response.json({ error: "Invalid message ID." }, { status: 400 });
 			try {
 				const summary = await this.getSummaryService().getSaved(emailId);
 				let state: EmailSummaryState = summary
 					? { status: "ready", summary }
 					: await this.ctx.storage.get<EmailSummaryState>(`email-summary-state:${emailId}`) ?? { status: "missing" };
 				if (state.status === "pending" && Date.now() - Date.parse(state.queuedAt) > 120_000) {
-					state = { status: "error", error: "摘要生成超时，请重试。" };
+					state = { status: "error", error: "Summary generation timed out. Try again." };
+				}
+				// Older jobs may have saved an error before UI copy switched to English.
+				if (state.status === "error" && /\p{Script=Han}/u.test(state.error)) {
+					state = { status: "error", error: "Unable to generate a summary. Try again." };
 				}
 				return Response.json(state, { headers: { "Cache-Control": "no-store" } });
 			} catch (error) {
 				if (error instanceof EmailSummaryError) return Response.json({ status: "error", error: error.message });
-				return Response.json({ error: "暂时无法读取摘要。" }, { status: 502 });
+				return Response.json({ error: "Unable to load the summary." }, { status: 502 });
 			}
 		}
 		if (url.pathname === "/summarizeEmail" && request.method === "POST") {
 			try {
 				const data = await request.json() as { emailId?: unknown };
 				if (typeof data?.emailId !== "string" || !data.emailId || data.emailId.length > 256) {
-					return Response.json({ error: "邮件 ID 无效。" }, { status: 400 });
+					return Response.json({ error: "Invalid message ID." }, { status: 400 });
 				}
 				const job = this.getSummaryService().summarize(data.emailId);
 				this.ctx.waitUntil(job.catch(() => {}));
 				return Response.json(await job, { headers: { "Cache-Control": "no-store" } });
 			} catch (error) {
-				if (error instanceof SyntaxError) return Response.json({ error: "请求格式无效。" }, { status: 400 });
+				if (error instanceof SyntaxError) return Response.json({ error: "Invalid request format." }, { status: 400 });
 				if (error instanceof EmailSummaryError) return Response.json({ error: error.message }, { status: error.status });
 				console.error("Email summary failed:", (error as Error).name);
-				return Response.json({ error: "暂时无法生成摘要，请稍后重试。" }, { status: 502 });
+				return Response.json({ error: "Unable to generate a summary. Try again shortly." }, { status: 502 });
 			}
 		}
 		if (url.pathname === "/onNewEmail" && request.method === "POST") {

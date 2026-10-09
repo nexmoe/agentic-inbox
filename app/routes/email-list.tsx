@@ -388,7 +388,7 @@ export default function EmailListRoute() {
 				) : (
 					<div className="min-h-0 flex-1 overflow-y-auto">
 						{activeQuery.isError ? (
-							<div className="p-6 text-sm text-kumo-subtle" role="alert"><p>暂时无法加载邮件。</p><Button size="sm" variant="secondary" className="mt-3" onClick={handleRefresh}>重试</Button></div>
+							<div className="p-6 text-sm text-kumo-subtle" role="alert"><p>Unable to load messages.</p><Button size="sm" variant="secondary" className="mt-3" onClick={handleRefresh}>Retry</Button></div>
 						) : activeQuery.isLoading ? (
 							<EmailListSkeleton />
 						) : unreadOnly ? (
@@ -397,12 +397,12 @@ export default function EmailListRoute() {
 					</div>
 				)}
 				{activeQuery.isRefetchError && emails.length > 0 && (
-					<p role="alert" className="shrink-0 px-4 py-2 text-xs text-kumo-subtle">刷新失败，当前显示已加载的邮件。请重试刷新。</p>
+					<p role="alert" className="shrink-0 px-4 py-2 text-xs text-kumo-subtle">Unable to refresh. Showing previously loaded messages.</p>
 				)}
 
 				{/* Count and refresh */}
 				<div className="flex items-center justify-between border-t border-kumo-line px-4 py-2 shrink-0">
-					<span className="text-xs text-kumo-subtle" role="status">{totalCount} {unified ? "封邮件" : `conversation${totalCount === 1 ? "" : "s"}`}</span>
+					<span className="text-xs text-kumo-subtle" role="status">{totalCount} {unified ? `message${totalCount === 1 ? "" : "s"}` : `conversation${totalCount === 1 ? "" : "s"}`}</span>
 					<Tooltip content={isRefreshing ? "Refreshing…" : "Refresh"} asChild><Button variant="ghost" shape="square" size="sm" icon={<ArrowsClockwiseIcon size={16} className={isRefreshing ? "animate-spin motion-reduce:animate-none" : ""} />} onClick={handleRefresh} disabled={isRefreshing} aria-label="Refresh" /></Tooltip>
 				</div>
 		</MailboxSplitView>

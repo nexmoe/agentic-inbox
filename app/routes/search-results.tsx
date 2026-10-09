@@ -82,7 +82,7 @@ export default function SearchResultsRoute() {
 				<div className="mail-pane-header gap-2 px-4 md:px-5" data-mail-header="search">
 					<MobileSidebarToggle />
 					<Tooltip content="Back to inbox" side="bottom" asChild><Button variant="ghost" shape="square" size="sm" icon={<ArrowLeftIcon size={18} />} onClick={() => navigate(unified ? "/all/emails/inbox" : `/mailbox/${encodeURIComponent(mailboxId || "")}/emails/inbox`)} aria-label="Back to inbox" /></Tooltip>
-					<div className="min-w-0 flex-1"><h1 className="text-lg font-semibold text-kumo-default truncate">搜索结果</h1>{!isLoading && <span className="block truncate text-xs text-kumo-subtle">{totalCount} 封邮件 · {unified ? "全部邮箱" : mailboxId}</span>}</div>
+					<div className="min-w-0 flex-1"><h1 className="text-lg font-semibold text-kumo-default truncate">Search results</h1>{!isLoading && <span className="block truncate text-xs text-kumo-subtle">{totalCount} message{totalCount === 1 ? "" : "s"} · {unified ? "All mailboxes" : mailboxId}</span>}</div>
 				</div>
 				<MailSearch />
 				{results.length > 0 ? (
@@ -117,18 +117,18 @@ export default function SearchResultsRoute() {
 				) : (
 					<div className="min-h-0 flex-1 overflow-y-auto">
 						{isLoading ? <div className="flex justify-center py-16"><Loader size="lg" /></div> : searchQuery.isError ? (
-							<div className="p-6 text-sm text-kumo-subtle" role="alert"><p>暂时无法加载搜索结果。</p><Button size="sm" variant="secondary" className="mt-3" onClick={() => void searchQuery.refetch()}>重试</Button></div>
+							<div className="p-6 text-sm text-kumo-subtle" role="alert"><p>Unable to load search results.</p><Button size="sm" variant="secondary" className="mt-3" onClick={() => void searchQuery.refetch()}>Retry</Button></div>
 						) : (
 						<div className="flex flex-col items-center justify-center py-24 px-6 text-center">
 							<div className="mb-4"><MagnifyingGlassIcon size={48} weight="thin" className="text-kumo-subtle" /></div>
-							<h3 className="text-base font-semibold text-kumo-default mb-1.5">没有找到邮件</h3>
-							<p className="text-sm text-kumo-subtle max-w-xs">{urlQuery ? `没有匹配“${urlQuery}”的邮件，试试其他关键词。` : "输入关键词，搜索标题、发件人和完整正文。"}</p>
-							{urlQuery && <p className="text-xs text-kumo-subtle mt-3 max-w-sm">也可使用 <code className="bg-kumo-tint px-1 rounded">from:name</code>、<code className="bg-kumo-tint px-1 rounded">is:unread</code>、<code className="bg-kumo-tint px-1 rounded">has:attachment</code> 等条件。</p>}
+							<h3 className="text-base font-semibold text-kumo-default mb-1.5">No results found</h3>
+							<p className="text-sm text-kumo-subtle max-w-xs">{urlQuery ? `No messages match "${urlQuery}". Try another keyword.` : "Search subjects, senders, and full message bodies."}</p>
+							{urlQuery && <p className="text-xs text-kumo-subtle mt-3 max-w-sm">Try filters such as <code className="bg-kumo-tint px-1 rounded">from:name</code>, <code className="bg-kumo-tint px-1 rounded">is:unread</code>, or <code className="bg-kumo-tint px-1 rounded">has:attachment</code>.</p>}
 						</div>
 						)}
 					</div>
 				)}
-				{searchQuery.isRefetchError && results.length > 0 && <p role="alert" className="shrink-0 px-4 py-2 text-xs text-kumo-subtle">刷新搜索结果失败。<Button variant="ghost" size="sm" onClick={() => void searchQuery.refetch()}>重试</Button></p>}
+				{searchQuery.isRefetchError && results.length > 0 && <p role="alert" className="shrink-0 px-4 py-2 text-xs text-kumo-subtle">Unable to refresh search results.<Button variant="ghost" size="sm" onClick={() => void searchQuery.refetch()}>Retry</Button></p>}
 			</>
 		</MailboxSplitView>
 	);
