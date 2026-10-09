@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import MailboxSplitView from "~/components/MailboxSplitView";
 import MobileSidebarToggle from "~/components/MobileSidebarToggle";
+import SenderAvatar from "~/components/email-panel/SenderAvatar";
 import { formatListDate, getSnippetText } from "~/lib/utils";
 import { useUpdateEmail } from "~/queries/emails";
 import { useSearchEmails, SEARCH_PAGE_SIZE } from "~/queries/search";
@@ -93,7 +94,8 @@ export default function SearchResultsRoute() {
 							const folderName = (email as Email & { folder_name?: string }).folder_name;
 							return (
 								<div key={email.id} role="button" tabIndex={0} onClick={() => handleRowClick(email)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleRowClick(email); } }} className={`group flex items-center gap-3 w-full text-left cursor-pointer transition-colors border-b border-kumo-line px-4 py-3 md:px-5 ${isSelected ? "bg-kumo-tint" : "hover:bg-kumo-tint"}`}>
-									<div className="min-w-0 flex-1">
+									<SenderAvatar sender={email.sender} />
+									<div data-mail-row-content className="min-w-0 flex-1">
 										<div className="flex items-center gap-2"><span className={`truncate text-sm ${!email.read ? "font-semibold text-kumo-default" : "text-kumo-strong"}`}>{highlightTerms(email.sender.split("@")[0], urlQuery)}</span>{!email.read && <span className="h-2 w-2 shrink-0 rounded-full bg-kumo-brand" aria-label="Unread" />}{folderName && <Badge variant="outline">{folderDisplayName(folderName)}</Badge>}<span className="text-sm text-kumo-subtle shrink-0 ml-auto">{formatListDate(email.date)}</span></div>
 										<div className={`truncate text-sm mt-0.5 ${!email.read ? "font-medium text-kumo-default" : "text-kumo-subtle"}`}>{highlightTerms(aiTitle || email.subject, urlQuery)}</div>
 										{snippet && <div className="truncate text-xs text-kumo-subtle mt-0.5">{highlightTerms(snippet, urlQuery)}</div>}

@@ -5,6 +5,8 @@
 import { fontWeights } from "@/lib/font-weight";
 import { typeClass } from "@/lib/type-scale";
 import { formatDetailDate } from "~/lib/utils";
+import { getSenderDetails } from "~/lib/sender";
+import SenderAvatar from "~/components/email-panel/SenderAvatar";
 import type { Email } from "~/types";
 
 interface EmailPanelHeaderProps {
@@ -20,10 +22,7 @@ export default function EmailPanelHeader({
 	showThreadCount,
 	email,
 }: EmailPanelHeaderProps) {
-	const sender = email?.sender.match(/^(.*?)\s*<([^<>]+)>\s*$/);
-	const senderName = sender?.[1].trim().replace(/^"(.*)"$/, "$1");
-	const senderAddress = sender?.[2] || email?.sender;
-	const senderLabel = senderName || senderAddress;
+	const { name: senderName, address: senderAddress, label: senderLabel } = getSenderDetails(email?.sender);
 
 	return (
 		<header data-mail-message-header className="px-4 py-5 md:px-6" style={{ fontVariationSettings: fontWeights.normal }}>
@@ -35,9 +34,7 @@ export default function EmailPanelHeader({
 			)}
 			{email && (
 				<div data-mail-message-meta className="mt-4 grid grid-cols-[32px_minmax(0,1fr)] items-start gap-x-3 gap-y-1 @[480px]:grid-cols-[32px_minmax(0,1fr)_auto]">
-					<div aria-hidden="true" className={`row-span-2 flex h-8 w-8 items-center justify-center rounded-full bg-kumo-fill text-foreground @[480px]:row-span-1 ${typeClass("caption")}`} style={{ fontVariationSettings: fontWeights.semibold }}>
-						{senderLabel?.charAt(0).toUpperCase()}
-					</div>
+					<SenderAvatar sender={email.sender} className="row-span-2 @[480px]:row-span-1" />
 					<div className="min-w-0">
 						<div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
 							<span className={`${typeClass("body")} [overflow-wrap:anywhere] text-foreground`} style={{ fontVariationSettings: fontWeights.semibold }}>{senderLabel}</span>
