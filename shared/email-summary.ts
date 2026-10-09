@@ -1,4 +1,6 @@
 export interface EmailSummary {
+	/** Older saved summaries may not have a generated title yet. */
+	title?: string;
 	text: string;
 	generatedAt: string;
 	messageCount: number;

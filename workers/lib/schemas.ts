@@ -17,6 +17,7 @@ import { z } from "zod";
 export interface EmailMetadata {
 	id: string;
 	subject: string;
+	ai_title?: string | null;
 	sender: string;
 	recipient: string;
 	cc?: string | null;

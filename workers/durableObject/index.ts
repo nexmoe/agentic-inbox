@@ -4,7 +4,7 @@
 
 import { DurableObject } from "cloudflare:workers";
 import { drizzle } from "drizzle-orm/durable-sqlite";
-import { eq, and, or, asc, desc, sql } from "drizzle-orm";
+import { eq, and, or, asc, desc, inArray, sql } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import * as schema from "../db/schema";
 import { Folders } from "../../shared/folders";
@@ -162,6 +162,7 @@ export class MailboxDO extends DurableObject<Env> {
 			.select({
 				id: schema.emails.id,
 				subject: schema.emails.subject,
+				ai_title: schema.emails.ai_title,
 				sender: schema.emails.sender,
 				recipient: schema.emails.recipient,
 				cc: schema.emails.cc,
@@ -277,7 +278,7 @@ export class MailboxDO extends DurableObject<Env> {
 					FROM folder_emails fe
 				)
 				SELECT
-					lp.id, lp.subject, lp.sender, lp.recipient, lp.date,
+					lp.id, lp.subject, lp.ai_title, lp.sender, lp.recipient, lp.date,
 					lp.read, lp.starred, lp.thread_id, lp.folder_id,
 					lp.in_reply_to, lp.email_references,
 					SUBSTR(lp.body, 1, 300) as snippet,
@@ -365,7 +366,7 @@ export class MailboxDO extends DurableObject<Env> {
 					ON fe.raw_thread_id = tc.raw_thread_id
 			)
 			SELECT
-				lif.id, lif.subject, lif.sender, lif.recipient, lif.date,
+				lif.id, lif.subject, lif.ai_title, lif.sender, lif.recipient, lif.date,
 				lif.read, lif.starred, lif.thread_id, lif.folder_id,
 				lif.in_reply_to, lif.email_references,
 				SUBSTR(lif.body, 1, 300) as snippet,
@@ -512,6 +513,15 @@ export class MailboxDO extends DurableObject<Env> {
 			starred: !!email.starred,
 			attachments: attachmentsByEmail.get(email.id) || [],
 		}));
+	}
+
+	/** Save the conversation title only on messages actually read by the Agent. */
+	async saveEmailTitle(emailIds: string[], title: string): Promise<void> {
+		if (emailIds.length === 0) return;
+		this.db.update(schema.emails)
+			.set({ ai_title: title })
+			.where(and(inArray(schema.emails.id, emailIds), sql`${schema.emails.folder_id} != ${Folders.DRAFT}`))
+			.run();
 	}
 
 	async updateEmail(
@@ -689,7 +699,7 @@ export class MailboxDO extends DurableObject<Env> {
 			const p2 = addParam(`%${query}%`);
 			const p3 = addParam(`%${query}%`);
 			const p4 = addParam(`%${query}%`);
-			conditions.push(`(${prefix}subject LIKE ${p1} OR ${prefix}body LIKE ${p2} OR ${prefix}sender LIKE ${p3} OR ${prefix}recipient LIKE ${p4} OR ${prefix}cc LIKE ${p4} OR ${prefix}bcc LIKE ${p4})`);
+			conditions.push(`(${prefix}subject LIKE ${p1} OR ${prefix}ai_title LIKE ${p1} OR ${prefix}body LIKE ${p2} OR ${prefix}sender LIKE ${p3} OR ${prefix}recipient LIKE ${p4} OR ${prefix}cc LIKE ${p4} OR ${prefix}bcc LIKE ${p4})`);
 		}
 		if (folder) {
 			const p = addParam(folder);
@@ -716,7 +726,7 @@ export class MailboxDO extends DurableObject<Env> {
 		const offset = (page - 1) * limit;
 
 		const query = `
-			SELECT e.id, e.subject, e.sender, e.recipient, e.cc, e.bcc, e.date,
+			SELECT e.id, e.subject, e.ai_title, e.sender, e.recipient, e.cc, e.bcc, e.date,
 				e.read, e.starred, e.in_reply_to, e.email_references,
 				e.thread_id, e.folder_id,
 				SUBSTR(e.body, 1, 300) as snippet,

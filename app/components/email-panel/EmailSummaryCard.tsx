@@ -2,9 +2,10 @@ import { Button, Loader } from "@cloudflare/kumo";
 import { ArrowClockwiseIcon, SparkleIcon } from "@phosphor-icons/react";
 import { useEmailSummary } from "~/queries/emails";
 import type { Email } from "~/types";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import api from "~/services/api";
+import { queryKeys } from "~/queries/keys";
 
 export default function EmailSummaryCard({ mailboxId, email, revision, ready }: {
 	mailboxId: string | undefined;
@@ -19,6 +20,12 @@ export default function EmailSummaryCard({ mailboxId, email, revision, ready }: 
 	const summary = data?.status === "ready" ? data.summary : undefined;
 	const errorMessage = generationError || error?.message || (data?.status === "error" ? data.error : null);
 	const waiting = isPending || data?.status === "pending" || isGenerating;
+	useEffect(() => {
+		if (!mailboxId || !summary?.title) return;
+		void qc.invalidateQueries({ queryKey: ["emails", mailboxId] });
+		void qc.invalidateQueries({ queryKey: queryKeys.unifiedEmails.all });
+		void qc.invalidateQueries({ queryKey: ["search", mailboxId] });
+	}, [mailboxId, qc, summary?.title, summary?.generatedAt]);
 	const generate = async () => {
 		if (!mailboxId) return;
 		setIsGenerating(true);
@@ -51,7 +58,10 @@ export default function EmailSummaryCard({ mailboxId, email, revision, ready }: 
 				) : data?.status === "missing" ? (
 					<div className="flex flex-wrap items-center gap-3"><p className="text-sm text-kumo-subtle">这封历史邮件还没有摘要。</p><Button size="sm" variant="secondary" onClick={() => void generate()}>生成摘要</Button></div>
 				) : (
-					<p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-kumo-default">{summary?.text}</p>
+					<>
+						<p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-kumo-default">{summary?.text}</p>
+						{summary && !summary.title && <Button size="sm" variant="secondary" className="mt-3" disabled={isGenerating} onClick={() => void generate()}>{isGenerating ? "正在生成标题…" : "生成标题"}</Button>}
+					</>
 				)}
 			</div>
 		</section>

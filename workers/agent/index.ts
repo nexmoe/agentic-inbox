@@ -6,6 +6,7 @@ import { AIChatAgent } from "@cloudflare/ai-chat";
 import {
 	streamText,
 	generateText,
+	Output,
 	convertToModelMessages,
 	stepCountIs,
 } from "ai";
@@ -13,7 +14,7 @@ import { createWorkersAI } from "workers-ai-provider";
 import { z } from "zod";
 import type { EmailFull, EmailMetadata } from "../lib/schemas";
 import { verifyDraft, isPromptInjection } from "../lib/ai";
-import { EmailSummaryService, EmailSummaryError, EMAIL_SUMMARY_SYSTEM_PROMPT } from "../lib/email-summary";
+import { EmailSummaryService, EmailSummaryError, EmailSummaryOutputSchema, EMAIL_SUMMARY_SYSTEM_PROMPT } from "../lib/email-summary";
 import type { EmailSummaryMailbox } from "../lib/email-summary";
 import {
 	getMailboxStub,
@@ -309,19 +310,21 @@ export class EmailAgent extends AIChatAgent<any> {
 				getThread: (id) => mailbox.getThreadEmails(id),
 				getCached: (key) => this.ctx.storage.get(key),
 				putCached: (key, value) => this.ctx.storage.put(key, value),
+				saveTitle: (emailIds, title) => mailbox.saveEmailTitle(emailIds, title),
 				generate: async (prompt) => {
 					const result = await generateText({
 						model: workersai(env.AI_MODEL, env.AI_MODEL === "@cf/zai-org/glm-4.7-flash"
 							? { chat_template_kwargs: { enable_thinking: false } }
 							: undefined),
 						system: EMAIL_SUMMARY_SYSTEM_PROMPT,
+						output: Output.object({ schema: EmailSummaryOutputSchema }),
 						prompt,
 						maxOutputTokens: 1_600,
 						maxRetries: 0,
 						abortSignal: AbortSignal.timeout(25_000),
 					});
 					if (result.finishReason === "length") throw new EmailSummaryError("摘要生成未完成，请重试。", 502);
-					return result.text;
+					return result.output;
 				},
 			});
 		}

@@ -29,6 +29,7 @@ export interface Email {
 	thread_id?: string | null;
 	folder_id?: string | null;
 	subject: string;
+	ai_title?: string | null;
 	sender: string;
 	recipient: string;
 	cc?: string;
