@@ -23,6 +23,7 @@ import { formatListDate } from "shared/dates";
 import MailboxSplitView from "~/components/MailboxSplitView";
 import MobileSidebarToggle from "~/components/MobileSidebarToggle";
 import MailSearch from "~/components/MailSearch";
+import MailAddressLine from "~/components/MailAddressLine";
 import VirtualMailList from "~/components/VirtualMailList";
 import { flattenEmailPages } from "~/lib/email-pages";
 import SenderAvatar from "~/components/email-panel/SenderAvatar";
@@ -260,18 +261,6 @@ export default function EmailListRoute() {
 		}
 	};
 
-	const formatParticipants = (email: Email): string => {
-		if (email.participants) {
-			const names = email.participants
-				.split(",")
-				.map((p) => p.trim().split("@")[0])
-				.filter((name, idx, arr) => arr.indexOf(name) === idx);
-			if (names.length <= 3) return names.join(", ");
-			return `${names.slice(0, 2).join(", ")} +${names.length - 2}`;
-		}
-		return email.sender.split("@")[0];
-	};
-
 	return (
 		<MailboxSplitView
 			selectedEmailId={selectedEmailId}
@@ -299,7 +288,7 @@ export default function EmailListRoute() {
 						emails={emails}
 						mailboxId={mailboxId}
 						totalCount={totalCount}
-						estimateSize={unified ? 84 : 66}
+						estimateSize={66}
 						hasNextPage={!!activeQuery.hasNextPage}
 						isFetching={isRefreshing}
 						isFetchingNextPage={activeQuery.isFetchingNextPage}
@@ -327,14 +316,17 @@ export default function EmailListRoute() {
 									<SenderAvatar sender={email.sender} />
 									{/* Content */}
 									<div data-mail-row-content className="min-w-0 flex-1">
-										{unified && <div className="mb-0.5 truncate text-xs text-kumo-brand">{email.mailbox_id}</div>}
 										<div className="flex items-center gap-2">
-											<span
-												className={`truncate text-sm ${hasUnread(email) ? "font-semibold text-kumo-default" : "text-kumo-strong"}`}
-											>
-												{formatParticipants(email)}
-											</span>
+											<MailAddressLine sender={email.sender} recipient={email.recipient} unread={hasUnread(email)} />
 											{hasUnread(email) && <span className="h-2 w-2 shrink-0 rounded-full bg-kumo-brand" aria-label="Unread" />}
+										</div>
+										<div className="mt-0.5 flex min-w-0 items-center gap-2">
+											<div className="min-w-0 flex-1 truncate text-sm">
+												<span className={hasUnread(email) ? "font-medium text-kumo-default" : "text-kumo-subtle"}>
+													{aiTitle || email.subject}
+												</span>
+												{snippet && <span className="text-kumo-subtle font-normal"> &mdash; {snippet}</span>}
+											</div>
 											{(email.thread_count ?? 1) > 1 && (
 												<span className="shrink-0 text-xs text-kumo-subtle bg-kumo-fill rounded-full px-1.5 py-0.5 font-medium">
 													{email.thread_count}
@@ -352,21 +344,9 @@ export default function EmailListRoute() {
 													</span>
 												</Tooltip>
 											)}
-											<span className="text-sm text-kumo-subtle shrink-0 ml-auto">
+											<span className={`${typeClass("caption")} text-kumo-subtle shrink-0`}>
 												{formatListDate(email.date)}
 											</span>
-										</div>
-										<div className="truncate text-sm mt-0.5">
-											<span
-												className={hasUnread(email) ? "font-medium text-kumo-default" : "text-kumo-subtle"}
-											>
-												{aiTitle || email.subject}
-											</span>
-										{snippet && (
-											<span className="text-kumo-subtle font-normal">
-												{" "}&mdash; {snippet}
-											</span>
-										)}
 										</div>
 									</div>
 

@@ -9,6 +9,7 @@ import { useNavigate, useSearchParams } from "react-router";
 import MailboxSplitView from "~/components/MailboxSplitView";
 import MobileSidebarToggle from "~/components/MobileSidebarToggle";
 import MailSearch from "~/components/MailSearch";
+import MailAddressLine from "~/components/MailAddressLine";
 import { useActiveMailboxId, useUnifiedMailbox } from "~/hooks/useActiveMailbox";
 import VirtualMailList from "~/components/VirtualMailList";
 import { flattenEmailPages } from "~/lib/email-pages";
@@ -18,6 +19,7 @@ import { useUpdateEmail } from "~/queries/emails";
 import { useSearchEmails } from "~/queries/search";
 import { useUIStore } from "~/hooks/useUIStore";
 import type { Email } from "~/types";
+import { typeClass } from "@/lib/type-scale";
 
 function highlightTerms(text: string, query: string): React.ReactNode {
 	if (!query || !text) return text;
@@ -100,9 +102,12 @@ export default function SearchResultsRoute() {
 								<div data-mail-email-id={email.id} data-mail-mailbox-id={email.mailbox_id || mailboxId} role="button" tabIndex={0} onClick={() => handleRowClick(email)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleRowClick(email); } }} className={`group flex items-center gap-3 w-full text-left cursor-pointer transition-colors border-b border-kumo-line px-4 py-3 md:px-5 ${isSelected ? "bg-kumo-tint" : "hover:bg-kumo-tint"}`}>
 									<SenderAvatar sender={email.sender} />
 									<div data-mail-row-content className="min-w-0 flex-1">
-										{unified && <div className="mb-0.5 truncate text-xs text-kumo-brand">{email.mailbox_id}</div>}
-										<div className="flex items-center gap-2"><span className={`truncate text-sm ${!email.read ? "font-semibold text-kumo-default" : "text-kumo-strong"}`}>{highlightTerms(email.sender.split("@")[0], urlQuery)}</span>{!email.read && <span className="h-2 w-2 shrink-0 rounded-full bg-kumo-brand" aria-label="Unread" />}{folderName && <Badge variant="outline">{folderDisplayName(folderName)}</Badge>}<span className="text-sm text-kumo-subtle shrink-0 ml-auto">{formatListDate(email.date)}</span></div>
-										<div className={`truncate text-sm mt-0.5 ${!email.read ? "font-medium text-kumo-default" : "text-kumo-subtle"}`}>{highlightTerms(aiTitle || email.subject, urlQuery)}</div>
+										<div className="flex items-center gap-2"><MailAddressLine sender={email.sender} recipient={email.recipient} unread={!email.read} renderAddress={(address) => highlightTerms(address, urlQuery)} />{!email.read && <span className="h-2 w-2 shrink-0 rounded-full bg-kumo-brand" aria-label="Unread" />}</div>
+										<div className="mt-0.5 flex min-w-0 items-center gap-2">
+											<div className={`min-w-0 flex-1 truncate text-sm ${!email.read ? "font-medium text-kumo-default" : "text-kumo-subtle"}`}>{highlightTerms(aiTitle || email.subject, urlQuery)}</div>
+											{folderName && <Badge variant="outline">{folderDisplayName(folderName)}</Badge>}
+											<span className={`${typeClass("caption")} text-kumo-subtle shrink-0`}>{formatListDate(email.date)}</span>
+										</div>
 										{snippet && <div className="truncate text-xs text-kumo-subtle mt-0.5">{highlightTerms(snippet, urlQuery)}</div>}
 									</div>
 								</div>
