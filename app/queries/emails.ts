@@ -2,58 +2,48 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import api from "~/services/api";
 import type { Email } from "~/types";
 import { queryKeys } from "./keys";
 import type { EmailSummaryState } from "../../shared/email-summary";
-
-// ---------- Types ----------
-
-interface EmailListResponse {
-	emails: Email[];
-	totalCount: number;
-}
+import { EMAIL_PAGE_SIZE, nextEmailPage, normalizeEmailPage, patchEmailPages, type EmailListPage } from "~/lib/email-pages";
 
 // ---------- Queries ----------
 
-export function useUnifiedEmails(folder: string, cursor: string, enabled: boolean, unreadOnly = false) {
-	return useQuery({
-		queryKey: queryKeys.unifiedEmails.list(folder, cursor, unreadOnly),
-		queryFn: ({ signal }) => api.listUnifiedEmails({ folder, cursor, limit: "25", unread: String(unreadOnly) }, { signal }),
+export function useUnifiedEmails(folder: string, enabled: boolean, unreadOnly = false) {
+	return useInfiniteQuery({
+		queryKey: queryKeys.unifiedEmails.infinite(folder, unreadOnly),
+		initialPageParam: "",
+		queryFn: ({ pageParam, signal }) => api.listUnifiedEmails({ folder, cursor: pageParam, limit: String(EMAIL_PAGE_SIZE), unread: String(unreadOnly) }, { signal }),
+		getNextPageParam: (lastPage) => lastPage.nextCursor || undefined,
 		enabled,
-		refetchInterval: cursor ? false : 30_000,
+		// Poll the newest page only while at the head. Do not repeatedly read
+		// an entire archive after the user has scrolled through older pages.
+		refetchInterval: (query) => (query.state.data?.pages.length ?? 0) <= 1 ? 30_000 : false,
 	});
 }
 
 export function useEmails(
 	mailboxId: string | undefined,
 	params: Record<string, string>,
-	options?: { enabled?: boolean; refetchInterval?: number },
+	options?: { enabled?: boolean },
 ) {
 	const queryParams = params.folder
 		? { ...params, threaded: "true" }
 		: params;
 
-	return useQuery<EmailListResponse>({
+	return useInfiniteQuery({
 		queryKey: mailboxId
-			? queryKeys.emails.list(mailboxId, queryParams)
+			? queryKeys.emails.infinite(mailboxId, queryParams)
 			: ["emails", "_disabled"],
-		queryFn: async () => {
-			const data = await api.listEmails(mailboxId!, queryParams) as
-				| EmailListResponse
-				| Email[];
-			if (data && typeof data === "object" && "emails" in data) {
-				return {
-					emails: (data as EmailListResponse).emails ?? [],
-					totalCount: (data as EmailListResponse).totalCount ?? 0,
-				};
-			}
-			const arr = Array.isArray(data) ? data : [];
-			return { emails: arr, totalCount: arr.length };
-		},
+		initialPageParam: 1,
+		queryFn: async ({ pageParam, signal }) => normalizeEmailPage(await api.listEmails(mailboxId!, {
+			...queryParams, page: String(pageParam), limit: String(EMAIL_PAGE_SIZE),
+		}, { signal })),
+		getNextPageParam: (lastPage, _pages, lastPageParam) => nextEmailPage(lastPage, lastPageParam),
 		enabled: !!mailboxId && (options?.enabled ?? true),
-		refetchInterval: options?.refetchInterval,
+		refetchInterval: (query) => (query.state.data?.pages.length ?? 0) <= 1 ? 30_000 : false,
 	});
 }
 
@@ -129,6 +119,7 @@ function useInvalidateEmailData() {
 	return (mailboxId: string) => {
 		qc.invalidateQueries({ queryKey: queryKeys.unifiedEmails.all });
 		qc.invalidateQueries({ queryKey: ["emails", mailboxId] });
+		qc.invalidateQueries({ queryKey: ["search", mailboxId] });
 		qc.invalidateQueries({
 			queryKey: queryKeys.folders.list(mailboxId),
 		});
@@ -157,10 +148,9 @@ export function useUpdateEmail() {
 		}: { mailboxId: string; id: string; data: unknown }) =>
 			api.updateEmail(mailboxId, id, data),
 		onMutate: async ({ mailboxId, id, data }) => {
-			// Only target list queries (3rd key element is an object = params),
-			// NOT detail queries (string = emailId) or thread queries.
+			// Target unified, search and mailbox lists; exclude detail and thread queries.
 			const isListQuery = (query: { queryKey: readonly unknown[] }) =>
-				query.queryKey[0] === "unified-emails" || (
+				query.queryKey[0] === "unified-emails" || (query.queryKey[0] === "search" && query.queryKey[1] === mailboxId) || (
 					query.queryKey[0] === "emails" &&
 					query.queryKey[1] === mailboxId &&
 					typeof query.queryKey[2] === "object" &&
@@ -172,19 +162,13 @@ export function useUpdateEmail() {
 			});
 
 			// Snapshot current email list caches for rollback
-			const listQueries = qc.getQueriesData<{ emails: Email[]; totalCount: number }>({
+			const listQueries = qc.getQueriesData<InfiniteData<EmailListPage>>({
 				predicate: isListQuery,
 			});
 
 			// Optimistically patch every cached email list that contains this email
 			for (const [key, cached] of listQueries) {
-				if (!cached?.emails) continue;
-				qc.setQueryData(key, {
-					...cached,
-					emails: cached.emails.map((e) =>
-						e.id === id && (!e.mailbox_id || e.mailbox_id === mailboxId) ? { ...e, ...(data as Partial<Email>) } : e,
-					),
-				});
+				qc.setQueryData(key, patchEmailPages(cached, mailboxId, id, data as Partial<Email>));
 			}
 
 			// Also patch the detail cache
@@ -211,6 +195,7 @@ export function useUpdateEmail() {
 			qc.invalidateQueries({ queryKey: queryKeys.unifiedEmails.all });
 			// Always refetch to ensure server truth
 			qc.invalidateQueries({ queryKey: ["emails", mailboxId] });
+			qc.invalidateQueries({ queryKey: ["search", mailboxId] });
 			qc.invalidateQueries({
 				queryKey: queryKeys.folders.list(mailboxId),
 			});
@@ -229,6 +214,7 @@ export function useMarkThreadRead() {
 		onSuccess: (_data, { mailboxId }) => {
 			qc.invalidateQueries({ queryKey: queryKeys.unifiedEmails.all });
 			qc.invalidateQueries({ queryKey: ["emails", mailboxId] });
+			qc.invalidateQueries({ queryKey: ["search", mailboxId] });
 			qc.invalidateQueries({
 				queryKey: queryKeys.folders.list(mailboxId),
 			});

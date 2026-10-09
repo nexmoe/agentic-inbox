@@ -2,33 +2,23 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { parseSearchQuery } from "~/lib/search-parser";
 import api from "~/services/api";
-import type { Email } from "~/types";
 import { queryKeys } from "./keys";
+import { EMAIL_PAGE_SIZE, nextEmailPage, normalizeEmailPage } from "~/lib/email-pages";
 
-export const SEARCH_PAGE_SIZE = 25;
-
-interface SearchResponse {
-	emails: Email[];
-	totalCount: number;
-}
-
-export function useSearchEmails(
-	mailboxId: string | undefined,
-	query: string,
-	page: number,
-) {
-	return useQuery<{ results: Email[]; totalCount: number }>({
+export function useSearchEmails(mailboxId: string | undefined, query: string) {
+	return useInfiniteQuery({
 		queryKey: mailboxId && query
-			? queryKeys.search.results(mailboxId, query, page)
+			? queryKeys.search.infinite(mailboxId, query)
 			: ["search", "_disabled"],
-		queryFn: async () => {
+		initialPageParam: 1,
+		queryFn: async ({ pageParam, signal }) => {
 			const parsed = parseSearchQuery(query);
 			const params: Record<string, string> = {
-				page: String(page),
-				limit: String(SEARCH_PAGE_SIZE),
+				page: String(pageParam),
+				limit: String(EMAIL_PAGE_SIZE),
 			};
 			if (parsed.query) params.query = parsed.query;
 			if (parsed.from) params.from = parsed.from;
@@ -43,18 +33,9 @@ export function useSearchEmails(
 				params.is_starred = String(parsed.is_starred);
 			if (parsed.has_attachment) params.has_attachment = "true";
 
-			const data = await api.searchEmails(mailboxId!, params) as
-				| SearchResponse
-				| Email[];
-			if (data && typeof data === "object" && "emails" in data) {
-				return {
-					results: (data as SearchResponse).emails ?? [],
-					totalCount: (data as SearchResponse).totalCount ?? 0,
-				};
-			}
-			const arr = Array.isArray(data) ? data : [];
-			return { results: arr, totalCount: arr.length };
+			return normalizeEmailPage(await api.searchEmails(mailboxId!, params, { signal }));
 		},
+		getNextPageParam: (lastPage, _pages, lastPageParam) => nextEmailPage(lastPage, lastPageParam),
 		enabled: !!mailboxId && !!query,
 	});
 }
