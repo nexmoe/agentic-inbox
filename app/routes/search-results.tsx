@@ -13,7 +13,6 @@ import MailAddressLine from "~/components/MailAddressLine";
 import { useActiveMailboxId, useUnifiedMailbox } from "~/hooks/useActiveMailbox";
 import VirtualMailList from "~/components/VirtualMailList";
 import { flattenEmailPages } from "~/lib/email-pages";
-import SenderAvatar from "~/components/email-panel/SenderAvatar";
 import { formatListDate, getSnippetText } from "~/lib/utils";
 import { useUpdateEmail } from "~/queries/emails";
 import { useSearchEmails } from "~/queries/search";
@@ -100,7 +99,6 @@ export default function SearchResultsRoute() {
 							const folderName = (email as Email & { folder_name?: string }).folder_name;
 							return (
 								<div data-mail-email-id={email.id} data-mail-mailbox-id={email.mailbox_id || mailboxId} role="button" tabIndex={0} onClick={() => handleRowClick(email)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleRowClick(email); } }} className={`group flex items-center gap-3 w-full text-left cursor-pointer transition-colors border-b border-kumo-line px-4 py-3 md:px-5 ${isSelected ? "bg-kumo-tint" : "hover:bg-kumo-tint"}`}>
-									<SenderAvatar sender={email.sender} />
 									<div data-mail-row-content className="min-w-0 flex-1">
 										<div className="flex items-center gap-2"><MailAddressLine sender={email.sender} recipient={email.recipient} unread={!email.read} renderAddress={(address) => highlightTerms(address, urlQuery)} />{!email.read && <span className="h-2 w-2 shrink-0 rounded-full bg-kumo-brand" aria-label="Unread" />}</div>
 										<div className="mt-0.5 flex min-w-0 items-center gap-2">
