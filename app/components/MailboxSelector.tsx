@@ -58,7 +58,9 @@ export default function MailboxSelector() {
 				<SelectItem index={0} value="all" icon={StackIcon}>All mail</SelectItem>
 				{mailboxes.map((mailbox, index) => (
 					<SelectItem key={mailbox.id} index={index + 1} value={mailbox.id} icon={mailboxLogos.get(mailbox.id)}>
-						{mailbox.email}
+						{mailbox.catchAllDomains?.length
+							? mailbox.catchAllDomains.map((domain) => `*@${domain}`).join(", ")
+							: mailbox.email}
 					</SelectItem>
 				))}
 			</SelectContent>

@@ -76,3 +76,21 @@ test("without catch-all configuration only configured exact addresses are receiv
 		assert.equal(all.emails[0].subject, "Primary stays supported");
 	} finally { await f.close(); }
 });
+
+test("mailbox discovery identifies catch-all domains while preserving mailbox addresses", async () => {
+	const f = await fixture({
+		"EXAMPLE.COM": " TEAM@EXAMPLE.COM ",
+		"other.org": mailboxes[0],
+		"unknown.org": "missing@example.org",
+	});
+	try {
+		const boxes = await f.get("/api/v1/mailboxes");
+		const catchAllBox = boxes.find((box) => box.id === mailboxes[0]);
+		assert.equal(catchAllBox.email, mailboxes[0]);
+		assert.deepEqual(catchAllBox.catchAllDomains, ["example.com", "other.org"]);
+		const exactBox = boxes.find((box) => box.id === mailboxes[1]);
+		assert.equal(exactBox.email, mailboxes[1]);
+		assert.deepEqual(exactBox.catchAllDomains, []);
+		assert.equal(boxes.length, mailboxes.length);
+	} finally { await f.close(); }
+});
