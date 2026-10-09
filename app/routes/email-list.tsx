@@ -26,7 +26,6 @@ import MailSearch from "~/components/MailSearch";
 import MailAddressLine from "~/components/MailAddressLine";
 import VirtualMailList from "~/components/VirtualMailList";
 import { flattenEmailPages } from "~/lib/email-pages";
-import SenderAvatar from "~/components/email-panel/SenderAvatar";
 import { Tabs, TabsList, TabItem } from "@/components/ui/tabs";
 import { fontWeights } from "@/lib/font-weight";
 import { typeClass } from "@/lib/type-scale";
@@ -313,7 +312,6 @@ export default function EmailListRoute() {
 									}}
 									className={`group flex items-center gap-3 w-full text-left cursor-pointer transition-colors border-b border-kumo-line px-4 py-3 md:px-5 ${isSelected ? "bg-kumo-tint" : "hover:bg-kumo-tint"}`}
 								>
-									<SenderAvatar sender={email.sender} />
 									{/* Content */}
 									<div data-mail-row-content className="min-w-0 flex-1">
 										<div className="flex items-center gap-2">
