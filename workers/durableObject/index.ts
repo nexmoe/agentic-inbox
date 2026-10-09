@@ -66,6 +66,7 @@ interface SearchFilterOptions {
 
 interface GetEmailsOptions {
 	folder?: string;
+	unreadOnly?: boolean;
 	thread_id?: string;
 	page?: number;
 	limit?: number;
@@ -114,8 +115,8 @@ export class MailboxDO extends DurableObject<Env> {
 	// ── Email CRUD (Drizzle) ───────────────────────────────────────
 
 	/** Keyset pagination avoids downloading earlier pages from every mailbox. */
-	async getUnifiedEmails(folder: string, mailboxId: string, rawLimit: number, cursor?: UnifiedEmailCursor) {
-		const query = unifiedEmailsQuery(folder, mailboxId, rawLimit, cursor);
+	async getUnifiedEmails(folder: string, mailboxId: string, rawLimit: number, cursor?: UnifiedEmailCursor, unreadOnly = false) {
+		const query = unifiedEmailsQuery(folder, mailboxId, rawLimit, cursor, unreadOnly);
 		const emails = [...this.ctx.storage.sql.exec(query.sql, ...query.params)];
 		return emails.map((email) => ({
 			...email, id: String(email.id), subject: String(email.subject ?? ""),
@@ -127,6 +128,7 @@ export class MailboxDO extends DurableObject<Env> {
 	async getEmails(options: GetEmailsOptions = {}) {
 		const {
 			folder,
+			unreadOnly = false,
 			thread_id,
 			page = 1,
 			limit: rawLimit = 25,
@@ -146,6 +148,7 @@ export class MailboxDO extends DurableObject<Env> {
 		const offset = (page - 1) * limit;
 
 		const conditions: SQL[] = [];
+		if (unreadOnly) conditions.push(eq(schema.emails.read, 0));
 		if (folder) {
 			conditions.push(
 				sql`${schema.emails.folder_id} = (SELECT id FROM folders WHERE name = ${folder} OR id = ${folder} LIMIT 1)`,
@@ -193,9 +196,10 @@ export class MailboxDO extends DurableObject<Env> {
 	/**
 	 * Count total emails matching the given filters (for pagination).
 	 */
-	async countEmails(options: { folder?: string; thread_id?: string } = {}) {
-		const { folder, thread_id } = options;
+	async countEmails(options: { folder?: string; thread_id?: string; unreadOnly?: boolean } = {}) {
+		const { folder, thread_id, unreadOnly = false } = options;
 		const conditions: string[] = [];
+		if (unreadOnly) conditions.push("read = 0");
 		const params: (string | number)[] = [];
 
 		if (folder) {
@@ -227,6 +231,7 @@ export class MailboxDO extends DurableObject<Env> {
 	async getThreadedEmails(options: GetEmailsOptions = {}) {
 		const {
 			folder,
+			unreadOnly = false,
 			page = 1,
 			limit: rawLimit = 25,
 		} = options;
@@ -285,7 +290,7 @@ export class MailboxDO extends DurableObject<Env> {
 					ds.thread_count, ds.thread_unread_count, ds.participants
 				FROM latest_per_group lp
 				JOIN draft_stats ds ON lp.draft_group_key = ds.draft_group_key
-				WHERE lp.rn = 1
+				WHERE lp.rn = 1 ${unreadOnly ? "AND ds.thread_unread_count > 0" : ""}
 				ORDER BY lp.date DESC
 				LIMIT ?2 OFFSET ?3`,
 				folder, limit, offset
@@ -357,6 +362,9 @@ export class MailboxDO extends DurableObject<Env> {
 				SELECT
 					fe.*,
 					COALESCE(tc.conversation_id, fe.raw_thread_id) as conversation_id,
+					SUM(CASE WHEN fe.read = 0 THEN 1 ELSE 0 END) OVER (
+						PARTITION BY COALESCE(tc.conversation_id, fe.raw_thread_id)
+					) as folder_unread_count,
 					ROW_NUMBER() OVER (
 						PARTITION BY COALESCE(tc.conversation_id, fe.raw_thread_id)
 						ORDER BY fe.date DESC
@@ -380,7 +388,7 @@ export class MailboxDO extends DurableObject<Env> {
 			JOIN conversation_stats cs ON lif.conversation_id = cs.conversation_id
 			LEFT JOIN latest_message_per_conversation lmc
 				ON lmc.conversation_id = lif.conversation_id AND lmc.rn = 1
-			WHERE lif.rn = 1
+			WHERE lif.rn = 1 ${unreadOnly ? "AND lif.folder_unread_count > 0" : ""}
 			ORDER BY lif.date DESC
 			LIMIT ?2 OFFSET ?3`,
 			folder, limit, offset
@@ -403,7 +411,7 @@ export class MailboxDO extends DurableObject<Env> {
 	 * Count threaded conversations in a folder (for pagination).
 	 * Returns the number of conversation groups, not individual emails.
 	 */
-	async countThreadedEmails(folder: string) {
+	async countThreadedEmails(folder: string, unreadOnly = false) {
 		const isDraftFolder = folder === Folders.DRAFT;
 
 		if (isDraftFolder) {
@@ -411,7 +419,8 @@ export class MailboxDO extends DurableObject<Env> {
 				...this.ctx.storage.sql.exec(
 					`SELECT COUNT(DISTINCT COALESCE(in_reply_to, id)) as total
 					 FROM emails
-					 WHERE folder_id = (SELECT id FROM folders WHERE name = ?1 OR id = ?1 LIMIT 1)`,
+					 WHERE folder_id = (SELECT id FROM folders WHERE name = ?1 OR id = ?1 LIMIT 1)
+					 ${unreadOnly ? "AND read = 0" : ""}`,
 					folder,
 				),
 			][0] as { total: number } | undefined;
@@ -425,6 +434,7 @@ export class MailboxDO extends DurableObject<Env> {
 					SELECT
 						COALESCE(thread_id, id) as raw_thread_id,
 						thread_id,
+						read,
 					${NORMALIZED_SUBJECT_SQL} as normalized_subject
 					FROM emails
 					WHERE folder_id = (SELECT id FROM folders WHERE name = ?1 OR id = ?1 LIMIT 1)
@@ -432,6 +442,7 @@ export class MailboxDO extends DurableObject<Env> {
 				thread_to_conversation AS (
 					SELECT
 						raw_thread_id,
+						MIN(read) as all_read,
 						CASE
 							WHEN thread_id IS NOT NULL THEN raw_thread_id
 							WHEN normalized_subject != '' THEN MIN(raw_thread_id) OVER (PARTITION BY normalized_subject)
@@ -441,7 +452,7 @@ export class MailboxDO extends DurableObject<Env> {
 					GROUP BY raw_thread_id, normalized_subject, thread_id
 				)
 				SELECT COUNT(DISTINCT conversation_id) as total
-				FROM thread_to_conversation`,
+				FROM thread_to_conversation ${unreadOnly ? "WHERE all_read = 0" : ""}`,
 				folder,
 			),
 		][0] as { total: number } | undefined;

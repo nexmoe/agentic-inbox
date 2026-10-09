@@ -22,7 +22,7 @@ export const queryKeys = {
 	},
 	unifiedEmails: {
 		all: ["unified-emails"] as const,
-		list: (folder: string, cursor: string) => ["unified-emails", folder, cursor] as const,
+		list: (folder: string, cursor: string, unreadOnly = false) => ["unified-emails", folder, cursor, unreadOnly] as const,
 	},
 	folders: {
 		list: (mailboxId: string) => ["folders", mailboxId] as const,

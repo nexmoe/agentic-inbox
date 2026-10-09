@@ -5,6 +5,9 @@
 import type { ReactNode } from "react";
 import ComposePanel from "~/components/ComposePanel";
 import EmailPanel from "~/components/EmailPanel";
+import EmailPanelToolbar from "~/components/email-panel/EmailPanelToolbar";
+import { EnvelopeSimpleIcon } from "@phosphor-icons/react";
+import { useUIStore } from "~/hooks/useUIStore";
 import { useActiveMailboxId } from "~/hooks/useActiveMailbox";
 
 interface MailboxSplitViewProps {
@@ -21,20 +24,21 @@ export default function MailboxSplitView({
 	const isPanelOpen = selectedEmailId !== null || isComposing;
 	const mailboxId = useActiveMailboxId();
 	const panelKey = `${mailboxId}:${selectedEmailId}`;
+	const closePanel = useUIStore((state) => state.closePanel);
 
 	return (
-		<div className="flex h-full">
+		<div className="flex h-full min-h-0">
 			<div
-				className={`flex flex-col min-w-0 shrink-0 ${
+				className={`flex flex-col min-w-0 w-full md:w-[320px] xl:w-[420px] shrink-0 md:border-r md:border-kumo-line ${
 					isPanelOpen
-						? "hidden md:flex md:w-[380px] md:border-r md:border-kumo-line"
-						: "w-full"
+						? "hidden md:flex"
+						: "flex"
 				}`}
 			>
 				{children}
 			</div>
 			{isPanelOpen && (
-				<div className="flex-1 flex flex-col min-w-0 overflow-hidden w-full md:w-auto">
+				<div className="@container flex-1 flex flex-col min-w-0 overflow-hidden w-full md:w-auto">
 					{isComposing && !selectedEmailId ? (
 						<ComposePanel />
 					) : isComposing && selectedEmailId ? (
@@ -49,6 +53,13 @@ export default function MailboxSplitView({
 					) : null}
 				</div>
 			)}
+			{!isPanelOpen && <div className="@container hidden md:flex flex-1 min-w-0 flex-col">
+				<EmailPanelToolbar isDraftFolder={false} isSending={false} moveToFolders={[]} onBack={closePanel} />
+				<div className="flex flex-1 flex-col items-center justify-center gap-3 text-kumo-subtle">
+					<EnvelopeSimpleIcon size={32} weight="thin" />
+					<p className="text-sm">Select an email to read</p>
+				</div>
+			</div>}
 		</div>
 	);
 }

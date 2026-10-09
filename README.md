@@ -40,12 +40,13 @@ Use the cf CLI workflow in **Getting Started** below. The application also needs
 - **Built-in AI agent** — Side panel with 9 email tools for reading, searching, drafting, and organizing
 - **Auto-draft on new email** — Agent automatically reads inbound emails and generates draft replies, always requiring explicit confirmation before sending
 - **Auto-summary and title on arrival** — Receiving an email schedules the mailbox Agent to summarize the full body and conversation in Chinese and generate a short title in the same model call, even while the app is closed. Individual, unified, and search lists show the saved AI title without a body preview. Emails awaiting a title fall back to their original subject. Opening details reads the saved summary and preserves the original subject and body. Failed requests and historical emails offer a manual generation button.
-- **Unified mailbox view** — The **全部邮件** entry on the home page and mailbox sidebar combines all inboxes in one list, newest first. Each row shows its mailbox. Details, read status, stars, replies, and drafts use that mailbox. Sent, drafts, archive, and trash can also be viewed across mailboxes.
+- **Unified mailbox view** — Choose **全部邮件** on the home page or in the mailbox dropdown to combine all inboxes in one list, newest first. Each row shows its mailbox. Details, read status, stars, replies, and drafts use that mailbox. Sent, drafts, archive, and trash can also be viewed across mailboxes.
+- **Aligned mailbox headers** — Three equal-height headers provide direct mailbox switching and All mail / Unread filters. The layout fills the viewport. List text aligns to the left; starring is available in the detail toolbar's More menu.
 - **Configurable and persistent** — Custom system prompts per mailbox, persistent chat history, streaming markdown responses, and tool call visibility
 
 ## Stack
 
-- **Frontend:** React 19, React Router v8, Tailwind CSS, Zustand, TipTap, `@cloudflare/kumo`
+- **Frontend:** React 19, React Router v8, Tailwind CSS, Zustand, TipTap, `@cloudflare/kumo`, Fluid Functionalism (Base UI)
 - **Backend:** Hono, Cloudflare Workers, Durable Objects (SQLite), R2, Email Routing
 - **AI Agent:** Cloudflare Agents SDK (`AIChatAgent`), AI SDK v6, Workers AI (`@cf/zai-org/glm-4.7-flash`), `react-markdown` + `remark-gfm`
 - **Auth:** Cloudflare Access JWT validation (required outside local development)

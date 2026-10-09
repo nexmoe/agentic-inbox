@@ -7,7 +7,6 @@ import { Outlet } from "react-router";
 import { useActiveMailboxId, useUnifiedMailbox } from "~/hooks/useActiveMailbox";
 import AgentSidebar from "~/components/AgentSidebar";
 import ComposeEmail from "~/components/ComposeEmail";
-import Header from "~/components/Header";
 import Sidebar from "~/components/Sidebar";
 import { useMailbox } from "~/queries/mailboxes";
 import { useUIStore } from "~/hooks/useUIStore";
@@ -41,11 +40,11 @@ export default function MailboxRoute() {
 	}, [mailboxId, unified, closeComposeModal, closePanel, closeSidebar]);
 
 	return (
-		<div className="flex h-screen overflow-hidden">
+		<div className="flex h-dvh overflow-hidden bg-kumo-base">
 			{/* Mobile sidebar overlay backdrop */}
 			{isSidebarOpen && (
 				<div
-					className="fixed inset-0 z-30 bg-black/30 md:hidden"
+					className="fixed inset-0 z-30 bg-black/30 lg:hidden"
 					onClick={closeSidebar}
 					onKeyDown={(e) => e.key === "Escape" && closeSidebar()}
 					role="button"
@@ -56,7 +55,7 @@ export default function MailboxRoute() {
 
 			{/* Sidebar: hidden on mobile by default, shown as overlay when open */}
 			<div
-				className={`fixed inset-y-0 left-0 z-40 w-64 transform transition-transform duration-200 ease-in-out md:relative md:translate-x-0 md:z-0 ${
+				className={`mail-sidebar fixed inset-y-0 left-0 z-40 w-[280px] lg:relative lg:translate-x-0 lg:z-0 ${
 					isSidebarOpen ? "translate-x-0" : "-translate-x-full"
 				}`}
 			>
@@ -65,15 +64,14 @@ export default function MailboxRoute() {
 
 			{/* Main content */}
 			<div className="flex-1 flex flex-col min-w-0 bg-kumo-base">
-				<Header unified={unified} />
-				<main className="flex-1 overflow-hidden">
+				<main className="flex-1 min-h-0 overflow-hidden">
 					<Outlet />
 				</main>
 			</div>
 
 			{/* Agent + MCP sidebar -- togglable on desktop */}
 			{isAgentPanelOpen && mailboxId && (
-				<div className="hidden lg:flex w-[380px] shrink-0 border-l border-kumo-line flex-col bg-kumo-base overflow-hidden">
+				<div className="hidden lg:flex fixed inset-y-0 right-0 z-20 2xl:relative 2xl:z-0 w-[380px] shrink-0 border-l border-kumo-line flex-col bg-kumo-base overflow-hidden shadow-lg 2xl:shadow-none">
 					<AgentSidebar />
 				</div>
 			)}

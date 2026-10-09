@@ -5,8 +5,6 @@
 import { Badge, Button, Dialog, Input, Tooltip } from "@cloudflare/kumo";
 import {
 	ArchiveIcon,
-	CaretLeftIcon,
-	EnvelopeIcon,
 	FileIcon,
 	FolderIcon,
 	PaperPlaneTiltIcon,
@@ -16,10 +14,11 @@ import {
 	TrayIcon,
 } from "@phosphor-icons/react";
 import { useMemo, useState } from "react";
-import { NavLink, useNavigate } from "react-router";
+import { NavLink } from "react-router";
 import { Folders, SYSTEM_FOLDER_IDS } from "shared/folders";
 import { useCreateFolder, useFolders } from "~/queries/folders";
-import { useMailbox, useMailboxes } from "~/queries/mailboxes";
+import Header from "~/components/Header";
+import MailboxSelector from "~/components/MailboxSelector";
 import { useUIStore } from "~/hooks/useUIStore";
 import { useActiveMailboxId } from "~/hooks/useActiveMailbox";
 
@@ -77,12 +76,9 @@ function FolderLink({
 
 export default function Sidebar({ unified = false }: { unified?: boolean }) {
 	const mailboxId = useActiveMailboxId();
-	const navigate = useNavigate();
 	const { data: folders = [] } = useFolders(mailboxId);
 	const createFolderMutation = useCreateFolder();
-	const { startCompose, closeSidebar, closePanel, selectMailbox } = useUIStore();
-	const { data: currentMailbox } = useMailbox(mailboxId);
-	const { data: mailboxes = [] } = useMailboxes();
+	const { startCompose, closeSidebar } = useUIStore();
 	const [isCreateFolderOpen, setIsCreateFolderOpen] = useState(false);
 	const [newFolderName, setNewFolderName] = useState("");
 
@@ -106,51 +102,15 @@ export default function Sidebar({ unified = false }: { unified?: boolean }) {
 		}
 	};
 
-	const displayName = useMemo(() => {
-		if (!currentMailbox) return mailboxId?.split("@")[0] || "Mailbox";
-		// Prefer settings.fromName > name > local part of email
-		if (currentMailbox.settings?.fromName) {
-			return currentMailbox.settings.fromName;
-		}
-		if (currentMailbox.name && currentMailbox.name !== currentMailbox.email) {
-			return currentMailbox.name;
-		}
-		return currentMailbox.email.split("@")[0] || currentMailbox.name;
-	}, [currentMailbox, mailboxId]);
-
 	const handleNavClick = () => {
 		// Close mobile sidebar on navigation
 		closeSidebar();
 	};
 
 	return (
-		<aside className="h-full w-64 bg-kumo-recessed flex flex-col shrink-0 border-r border-kumo-line">
-			{/* Back + identity */}
-			<div className="px-4 pt-4 pb-1">
-				<button
-					type="button"
-					onClick={() => {
-						navigate("/");
-						closeSidebar();
-					}}
-					className="flex items-center gap-1.5 text-kumo-subtle text-sm hover:text-kumo-default transition-colors mb-2.5 cursor-pointer bg-transparent border-0 p-0"
-				>
-					<CaretLeftIcon size={14} />
-					<span>Mailboxes</span>
-				</button>
-				<div className="px-1">
-					<div className="text-base font-semibold text-kumo-default truncate">
-						{unified ? "全部邮箱" : displayName}
-					</div>
-					<div className="text-sm text-kumo-subtle truncate mt-0.5">
-						{unified ? `${mailboxes.length} 个邮箱` : currentMailbox?.email || mailboxId}
-					</div>
-					{unified && mailboxes.length > 0 && <label className="block mt-3 text-xs text-kumo-subtle">发件邮箱
-						<select aria-label="发件邮箱" value={mailboxId ?? ""} onChange={(event) => { closePanel(); selectMailbox(event.target.value); }} className="mt-1 w-full rounded-md border border-kumo-line bg-kumo-base px-2 py-1.5 text-sm text-kumo-default">
-							{mailboxes.map((mailbox) => <option key={mailbox.id} value={mailbox.id}>{mailbox.email}</option>)}
-						</select>
-					</label>}
-				</div>
+		<aside className="h-full w-[280px] bg-kumo-base flex flex-col shrink-0 border-r border-kumo-line">
+			<div className="mail-pane-header px-3" data-mail-header="mailboxes">
+				<div className="w-full min-w-0"><MailboxSelector /></div>
 			</div>
 
 			{/* Compose */}
@@ -160,7 +120,7 @@ export default function Sidebar({ unified = false }: { unified?: boolean }) {
 					icon={<PencilSimpleIcon size={16} />}
 					onClick={() => startCompose()}
 					disabled={!mailboxId}
-					className="w-full"
+					className="w-full h-9 bg-foreground text-background"
 				>
 					Compose
 				</Button>
@@ -168,7 +128,6 @@ export default function Sidebar({ unified = false }: { unified?: boolean }) {
 
 			{/* Navigation */}
 			<nav className="flex-1 overflow-y-auto px-2 space-y-0.5">
-				{!unified && <FolderLink to="/all/emails/inbox" icon={<EnvelopeIcon size={18} />} label="全部邮件" onClick={handleNavClick} />}
 				{SYSTEM_FOLDER_LINKS.map((folder) => (
 					<FolderLink
 						key={folder.id}
@@ -232,6 +191,7 @@ export default function Sidebar({ unified = false }: { unified?: boolean }) {
 					</div>
 				)}
 			</nav>
+			<Header unified={unified} />
 
 			{/* Create folder dialog */}
 			<Dialog.Root

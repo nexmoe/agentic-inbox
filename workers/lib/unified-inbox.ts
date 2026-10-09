@@ -1,9 +1,10 @@
 import type { UnifiedEmailCursor, UnifiedEmailPage } from "../../shared/unified-inbox";
 
-export function unifiedEmailsQuery(folder: string, mailboxId: string, rawLimit: number, cursor?: UnifiedEmailCursor) {
+export function unifiedEmailsQuery(folder: string, mailboxId: string, rawLimit: number, cursor?: UnifiedEmailCursor, unreadOnly = false) {
 	const limit = Math.min(Math.max(Math.floor(rawLimit), 1), 51);
 	const conditions = ["folder_id = ?"];
 	const params: (string | number)[] = [folder];
+	if (unreadOnly) conditions.push("read = 0");
 	if (cursor) {
 		const sameDate = mailboxId > cursor.mailboxId ? "1" : mailboxId < cursor.mailboxId ? "0" : "id > ?";
 		conditions.push(`(COALESCE(date, '') < ? OR (COALESCE(date, '') = ? AND (${sameDate})))`);
@@ -19,11 +20,11 @@ export function unifiedEmailsQuery(folder: string, mailboxId: string, rawLimit: 
 	};
 }
 
-export function decodeUnifiedCursor(value: string, folder: string): UnifiedEmailCursor {
+export function decodeUnifiedCursor(value: string, folder: string, unreadOnly = false): UnifiedEmailCursor {
 	if (value.length > 2_048) throw new Error("Invalid cursor");
 	try {
 		const cursor = JSON.parse(atob(value.replace(/-/g, "+").replace(/_/g, "/")));
-		if (!cursor || cursor.folder !== folder || typeof cursor.date !== "string" || cursor.date.length > 64 ||
+		if (!cursor || cursor.folder !== folder || (cursor.unreadOnly ?? false) !== unreadOnly || typeof cursor.date !== "string" || cursor.date.length > 64 ||
 			typeof cursor.mailboxId !== "string" || !cursor.mailboxId || cursor.mailboxId.length > 320 ||
 			typeof cursor.id !== "string" || !cursor.id || cursor.id.length > 256) throw new Error();
 		return cursor;
@@ -37,7 +38,7 @@ const compare = (a: string, b: string) => a < b ? -1 : a > b ? 1 : 0;
 /** Fetch one bounded page per mailbox; merge with the same order as each SQL query. */
 export async function listUnifiedEmails<T extends { id: string; date: string | null }>(
 	mailboxIds: string[],
-	options: { folder: string; limit: number; cursor?: UnifiedEmailCursor },
+	options: { folder: string; limit: number; cursor?: UnifiedEmailCursor; unreadOnly?: boolean },
 	load: (mailboxId: string, limit: number, cursor?: UnifiedEmailCursor) => Promise<{ emails: T[]; totalCount: number }>,
 ): Promise<UnifiedEmailPage<T>> {
 	const pages = await Promise.all([...new Set(mailboxIds)].map(async (mailboxId) => {
@@ -52,7 +53,7 @@ export async function listUnifiedEmails<T extends { id: string; date: string | n
 		emails,
 		totalCount: pages.reduce((count, page) => count + page.totalCount, 0),
 		nextCursor: merged.length > options.limit && last
-			? btoa(JSON.stringify({ date: last.date ?? "", mailboxId: last.mailbox_id, id: last.id, folder: options.folder }))
+			? btoa(JSON.stringify({ date: last.date ?? "", mailboxId: last.mailbox_id, id: last.id, folder: options.folder, unreadOnly: options.unreadOnly ?? false }))
 				.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")
 			: null,
 	};
