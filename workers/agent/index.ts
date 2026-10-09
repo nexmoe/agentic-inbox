@@ -16,7 +16,7 @@ import type { EmailFull, EmailMetadata } from "../lib/schemas";
 import { verifyDraft, isPromptInjection } from "../lib/ai";
 import { EmailSummaryService, EmailSummaryError, EmailSummaryOutputSchema, EMAIL_SUMMARY_SYSTEM_PROMPT, emailSummaryUserPrompt } from "../lib/email-summary";
 import type { EmailSummaryMailbox } from "../lib/email-summary";
-import { createEmailModel } from "../lib/email-ai";
+import { createEmailModel, emailAIRequestTimeoutMs } from "../lib/email-ai";
 import {
 	getMailboxStub,
 	stripHtmlToText,
@@ -313,7 +313,7 @@ export class EmailAgent extends AIChatAgent<any> {
 				putCached: (key, value) => this.ctx.storage.put(key, value),
 				saveTitle: (emailIds, title) => mailbox.saveEmailTitle(emailIds, title),
 				generate: async (prompt) => {
-					const signal = AbortSignal.timeout(25_000);
+					const signal = AbortSignal.timeout(emailAIRequestTimeoutMs(env));
 					try {
 						const result = await generateText({
 							model: createEmailModel(env, "summary", signal),
@@ -327,6 +327,7 @@ export class EmailAgent extends AIChatAgent<any> {
 						if (result.finishReason === "length") throw new EmailSummaryError("Summary generation was incomplete. Try again.", 502);
 						return result.output;
 					} catch (error) {
+						if (signal.aborted) throw new EmailSummaryError("Summary generation timed out. Try again.", 502);
 						if (NoObjectGeneratedError.isInstance(error)) {
 							throw new EmailSummaryError(error.finishReason === "length" ? "Summary generation was incomplete. Try again." : "No valid title or summary was generated. Try again.", 502);
 						}
@@ -370,7 +371,9 @@ export class EmailAgent extends AIChatAgent<any> {
 				let state: EmailSummaryState = summary
 					? { status: "ready", summary }
 					: await this.ctx.storage.get<EmailSummaryState>(`email-summary-state:${emailId}`) ?? { status: "missing" };
-				if (state.status === "pending" && Date.now() - Date.parse(state.queuedAt) > 120_000) {
+				// Allow both bounded attempts to finish before declaring the job stale.
+				const pendingTimeoutMs = Math.max(120_000, 2 * emailAIRequestTimeoutMs(this.env) + 30_000);
+				if (state.status === "pending" && Date.now() - Date.parse(state.queuedAt) > pendingTimeoutMs) {
 					state = { status: "error", error: "Summary generation timed out. Try again." };
 				}
 				// Older jobs may have saved an error before UI copy switched to English.

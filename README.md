@@ -106,9 +106,11 @@ Set `AI_API_KEY` as an encrypted Worker secret before deploying; for local devel
 
 `Z-AI/GLM-5.3-Flash` is supported through a compatible gateway. Its adapter enables low-effort reasoning and uses JSON mode; summary output is still validated locally. Gateway mode sends email content needed by the selected AI feature to that gateway and uses its quota.
 
+Gateway summaries and draft safety checks have a 90-second deadline per model request; Workers AI retains its 25-second deadline. The summary UI waits up to 100 seconds for a manual request. Automatic summaries keep their existing two-attempt limit and cached summaries remain read-only when opened. Timeouts show a specific error rather than a generic generation failure.
+
 ### Summaries and titles
 
-Summaries use the complete text of all saved messages in the thread, excluding unsent drafts. Attachment names and metadata are included; attachment contents are not read. Input over 80,000 characters returns a visible error. Each mailbox allows two concurrent summary generations, with a 25-second model timeout. A durable task starts on receipt and makes at most two attempts on transient errors. Automatic drafts run independently.
+Summaries use the complete text of all saved messages in the thread, excluding unsent drafts. Attachment names and metadata are included; attachment contents are not read. Input over 80,000 characters returns a visible error. Each mailbox allows two concurrent summary generations. A durable task starts on receipt and makes at most two attempts on transient errors. Automatic drafts run independently.
 
 The same structured response includes a title of at most 32 characters, saved separately from the original subject. Lists never call AI. Reopening unchanged emails reads the persisted Agent cache. Use **Generate summary** for historical messages, **Retry** after a failure, or **Update summary** to upgrade an older unstructured summary. Switching providers can preserve old caches through `aiPreviousModels`.
 

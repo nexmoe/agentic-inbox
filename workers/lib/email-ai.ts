@@ -14,6 +14,11 @@ export interface EmailAIEnvironment {
 
 type ModelPurpose = "chat" | "summary" | "injection" | "verification";
 
+/** Reasoning gateways need more time than the small Workers AI models. */
+export function emailAIRequestTimeoutMs(env: Pick<EmailAIEnvironment, "AI_PROVIDER">): number {
+	return env.AI_PROVIDER === "openai-compatible" ? 90_000 : 25_000;
+}
+
 /** All email AI features use the selected provider, including safety checks. */
 export function createEmailModel(env: EmailAIEnvironment, purpose: ModelPurpose = "chat", signal?: AbortSignal): LanguageModel {
 	if (env.AI_PROVIDER === "openai-compatible") {
@@ -45,7 +50,7 @@ export function createEmailModel(env: EmailAIEnvironment, purpose: ModelPurpose 
 		return provider.chatModel(env.AI_MODEL.trim());
 	}
 	if (env.AI_PROVIDER && env.AI_PROVIDER !== "workers-ai") throw new Error("Unknown AI provider.");
-	if (purpose === "summary") return createEmailSummaryModel(env.AI, env.AI_MODEL, signal ?? AbortSignal.timeout(25_000));
+	if (purpose === "summary") return createEmailSummaryModel(env.AI, env.AI_MODEL, signal ?? AbortSignal.timeout(emailAIRequestTimeoutMs(env)));
 	const model = purpose === "injection" ? "@cf/meta/llama-3.1-8b-instruct-fast"
 		: purpose === "verification" ? "@cf/meta/llama-4-scout-17b-16e-instruct" : env.AI_MODEL;
 	const binding = signal ? { run: (name: string, inputs: Record<string, unknown>, options?: AiOptions) => env.AI.run(name as Parameters<Ai["run"]>[0], inputs, { ...options, signal }) } as Ai : env.AI;

@@ -1,5 +1,7 @@
 import { EmailAgent as RealEmailAgent } from "../../workers/agent";
 import { app, receiveEmail } from "../../workers/index";
+import { getAgentByName } from "agents";
+import type { EmailSummaryState } from "../../shared/email-summary";
 export { MailboxDO } from "../../workers/durableObject";
 
 export class SummaryAgent extends RealEmailAgent {
@@ -17,10 +19,19 @@ export class SummaryAgent extends RealEmailAgent {
 	}
 	// Isolate automatic summaries from the separate reply-drafting feature.
 	async handleNewEmail() {}
+	async seedSummaryState(emailId: string, state: EmailSummaryState) {
+		await this.ctx.storage.put(`email-summary-state:${emailId}`, state);
+	}
 }
 
 export default {
 	async fetch(request: Request, env: any, ctx: ExecutionContext) {
+		if (new URL(request.url).pathname === "/__summary-state") {
+			const { emailId, state } = await request.json() as { emailId: string; state: EmailSummaryState };
+			const agent = await getAgentByName<SummaryAgent>(env.EMAIL_AGENT, "team@example.com");
+			await agent.seedSummaryState(emailId, state);
+			return new Response(null, { status: 204 });
+		}
 		if (new URL(request.url).pathname === "/__receive") {
 			const bytes = await request.arrayBuffer();
 			await receiveEmail({ raw: new Response(bytes).body!, rawSize: bytes.byteLength, to: "team@example.com" }, env, ctx);

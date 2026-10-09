@@ -11,7 +11,7 @@
 
 import { stripHtmlToText, textToHtml } from "./email-helpers";
 import { generateText } from "ai";
-import { createEmailModel } from "./email-ai";
+import { createEmailModel, emailAIRequestTimeoutMs } from "./email-ai";
 import type { EmailAIEnvironment } from "./email-ai";
 
 // ── Prompt Injection Scanner ───────────────────────────────────────
@@ -31,7 +31,7 @@ export async function isPromptInjection(env: EmailAIEnvironment, bodyHtml: strin
 	if (plainText.length < 10) return false;
 
 	try {
-		const signal = AbortSignal.timeout(25_000);
+		const signal = AbortSignal.timeout(emailAIRequestTimeoutMs(env));
 		const response = await generateText({
 			model: createEmailModel(env, "injection", signal),
 			system: INJECTION_PROMPT, prompt: plainText,
@@ -129,7 +129,7 @@ export async function verifyDraft(env: EmailAIEnvironment, body: string): Promis
 	if (replyText.trim().length < 20) return body;
 
 	try {
-		const signal = AbortSignal.timeout(25_000);
+		const signal = AbortSignal.timeout(emailAIRequestTimeoutMs(env));
 		const response = await generateText({
 			model: createEmailModel(env, "verification", signal),
 			system: VERIFIER_PROMPT, prompt: replyText,

@@ -23,9 +23,10 @@ export class ApiError extends Error {
 async function request<T>(
 	url: string,
 	options: RequestInit = {},
+	timeoutMs = REQUEST_TIMEOUT_MS,
 ): Promise<T> {
 	const controller = new AbortController();
-	const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+	const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
 	// Combine caller signal (e.g. TanStack Query abort) with our timeout signal
 	const signal = options.signal
@@ -68,12 +69,12 @@ function get<T>(url: string, opts?: { params?: Record<string, string>; responseT
 	});
 }
 
-function post<T>(url: string, body?: unknown, opts?: { signal?: AbortSignal }) {
+function post<T>(url: string, body?: unknown, opts?: { signal?: AbortSignal; timeoutMs?: number }) {
 	return request<T>(url, {
 		method: "POST",
 		signal: opts?.signal,
 		body: body != null ? JSON.stringify(body) : undefined,
-	});
+	}, opts?.timeoutMs);
 }
 
 function put<T>(url: string, body?: unknown) {
@@ -122,7 +123,8 @@ const api = {
 	getEmail: (mailboxId: string, id: string, opts?: { signal?: AbortSignal }) =>
 		get<Email>(`/api/v1/mailboxes/${mailboxId}/emails/${id}`, { signal: opts?.signal }),
 	summarizeEmail: (mailboxId: string, id: string, opts?: { signal?: AbortSignal }) =>
-		post<EmailSummary>(`/api/v1/mailboxes/${mailboxId}/emails/${id}/summary`, undefined, opts),
+		// Include headroom for Access validation and mailbox RPCs around the 90s gateway call.
+		post<EmailSummary>(`/api/v1/mailboxes/${mailboxId}/emails/${id}/summary`, undefined, { ...opts, timeoutMs: 100_000 }),
 	getEmailSummary: (mailboxId: string, id: string, opts?: { signal?: AbortSignal }) =>
 		get<EmailSummaryState>(`/api/v1/mailboxes/${mailboxId}/emails/${id}/summary`, opts),
 	updateEmail: (mailboxId: string, id: string, data: unknown) =>
