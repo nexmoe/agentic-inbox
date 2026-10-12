@@ -124,7 +124,7 @@ const api = {
 		get<Email>(`/api/v1/mailboxes/${mailboxId}/emails/${id}`, { signal: opts?.signal }),
 	summarizeEmail: (mailboxId: string, id: string, opts?: { signal?: AbortSignal }) =>
 		// Include headroom for Access validation and mailbox RPCs around the 90s gateway call.
-		post<EmailSummary>(`/api/v1/mailboxes/${mailboxId}/emails/${id}/summary`, undefined, { ...opts, timeoutMs: 100_000 }),
+		post<EmailSummary>(`/api/v1/mailboxes/${mailboxId}/emails/${id}/summary`, undefined, { ...opts, timeoutMs: 190_000 }),
 	getEmailSummary: (mailboxId: string, id: string, opts?: { signal?: AbortSignal }) =>
 		get<EmailSummaryState>(`/api/v1/mailboxes/${mailboxId}/emails/${id}/summary`, opts),
 	updateEmail: (mailboxId: string, id: string, data: unknown) =>
