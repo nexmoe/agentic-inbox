@@ -10,6 +10,38 @@
  * See: https://developers.cloudflare.com/email-service/api/send-emails/workers-api/
  */
 
+import { HTTPException } from "hono/http-exception";
+
+function deliveryError(error: unknown): HTTPException {
+	const code = error && typeof error === "object" && "code" in error ? error.code : undefined;
+	let status: 400 | 429 | 502 = 502;
+	let message = "Cloudflare could not accept this email. Please try again.";
+	switch (code) {
+		case "E_SENDER_NOT_VERIFIED":
+		case "E_SENDER_DOMAIN_NOT_AVAILABLE":
+			status = 400;
+			message = "Email sending is not enabled for this sender domain. Verify it in Cloudflare Email Sending.";
+			break;
+		case "E_RATE_LIMIT_EXCEEDED":
+			status = 429;
+			message = "The email sending limit has been reached. Please try again later.";
+			break;
+		case "E_RECIPIENT_NOT_ALLOWED":
+		case "E_RECIPIENT_SUPPRESSED":
+			status = 400;
+			message = "Cloudflare cannot send to one or more recipients. Check the recipient addresses and suppression settings.";
+			break;
+		case "E_VALIDATION_ERROR":
+		case "E_FIELD_MISSING":
+		case "E_TOO_MANY_RECIPIENTS":
+		case "E_TOO_MANY_ATTACHMENTS":
+		case "E_CONTENT_TOO_LARGE":
+			status = 400;
+			message = "Cloudflare rejected this email. Check the recipients, message size, and attachments.";
+	}
+	return new HTTPException(status, { message, res: Response.json({ error: message }, { status }) });
+}
+
 export interface SendEmailParams {
 	to: string | string[];
 	from: string | { email: string; name: string };
@@ -35,7 +67,7 @@ export interface SendEmailParams {
  * @param binding  - The `EMAIL` SendEmail binding from env
  * @param params   - Email parameters (to, from, subject, body, etc.)
  * @returns The send result with messageId
- * @throws On validation or delivery errors (error has `.code` property)
+ * @throws A safe JSON HTTP error when Cloudflare rejects the email
  */
 export async function sendEmail(
 	binding: SendEmail,
@@ -67,6 +99,13 @@ export async function sendEmail(
 		}));
 	}
 
-	const result = await binding.send(message as any);
-	return { messageId: result.messageId };
+	try {
+		const result = await binding.send(message as any);
+		if (!result || typeof result.messageId !== "string" || !result.messageId) {
+			throw new Error("Missing send acknowledgement");
+		}
+		return { messageId: result.messageId };
+	} catch (error) {
+		throw deliveryError(error);
+	}
 }
