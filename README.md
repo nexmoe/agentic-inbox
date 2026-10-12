@@ -28,6 +28,7 @@ Compared with upstream [`48039bb`](https://github.com/cloudflare/agentic-inbox/c
 | Remote content | Sanitized, sandboxed HTML; HTTPS images can load. | Remote images and remote CSS resources are blocked by default. **Load images** allows HTTPS images for that message while known tracking endpoints and hidden pixels remain blocked. A nonce restricts iframe scripts to the height reporter. |
 | Receiving and forwarding | Match configured recipients against the email's To header. | Route by the SMTP recipient, including CC/BCC delivery. Optional domain catch-alls collect aliases in an existing mailbox, labeled `*@example.com`. Optional external copies are configured separately and can be disabled with `{}`. |
 | AI providers | Workers AI with `@cf/moonshotai/kimi-k2.5` configured. | Workers AI defaults to `@cf/zai-org/glm-4.7-flash`; an OpenAI-compatible gateway can handle every AI feature, including safety checks. GLM-5.3 uses low reasoning effort, JSON mode with schema instructions, and local validation. Gateway errors never fall back to Workers AI. |
+| Sending | Compose, reply, and forward save to Sent before deferred delivery. | Wait for Cloudflare's send acknowledgement before adding to Sent or reporting success. Rejections return an actionable error; the composer and any saved draft remain available. |
 | Deployment and checks | Wrangler configuration, React Router 7, and Vite 6. | cf CLI, `cloudflare.config.ts`, ignored local deployment settings, React Router 8, and Vite 7. Automated tests cover receiving, summaries, gateways, unread filters, aggregate lists, search, scrolling data, and link privacy. |
 
 The original composer, automatic reply drafts, mailbox Durable Objects, R2 attachments, MCP tools, and shared Cloudflare Access policy remain. **All mail** is an aggregate view, not a new mailbox or a new authorization boundary.
@@ -49,6 +50,12 @@ Use the cf CLI workflow in **Getting Started** below. The application also needs
 3. **Set up Email Routing** -- Enable routing for each mail domain and point rules for your configured addresses to this Worker. Verify any forwarding destinations.
 4. **Create a mailbox** -- Visit your deployed app and create mailboxes for the addresses listed in `emailAddresses`.
 5. **Optional sending** -- Configure [Email Service](https://developers.cloudflare.com/email-service/) if you need outbound mail. Receiving, forwarding, and summaries work independently.
+
+### Enable sending
+
+Use a Workers Paid account and onboard each sender domain in Cloudflare Email Sending. With cf CLI, run `cf email-sending subdomains preview --zone example.com --name example.com` to check DNS conflicts, then `cf email-sending subdomains create --zone example.com --name example.com` to enable the domain and add its sending records. The required MX and SPF records use `cf-bounce.example.com`; DKIM and DMARC are also configured. Existing inbound routing stays in place. See the [Cloudflare setup guide](https://developers.cloudflare.com/email-service/get-started/send-emails/).
+
+The existing `EMAIL` binding handles new messages, replies, forwards, and MCP sends. Select a mailbox and use **Compose**, or open a message and choose **Reply** or **Forward**. The From address must match the selected mailbox. The app reports success after Cloudflare accepts the message; this does not guarantee arrival in the recipient's inbox. Check the Cloudflare Email Sending activity log for delivery and bounce status. Account quotas can be read with `cf email-sending limits get`; the app also keeps its existing limit of 20 messages per hour and 100 per day per mailbox.
 
 ### Troubleshooting Access
 

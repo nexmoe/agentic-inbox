@@ -18,6 +18,17 @@ export interface StoredAttachment {
 	disposition: string;
 }
 
+/** Remove temporary attachments when the provider rejects a send. */
+export async function discardAttachments(bucket: Env["BUCKET"], attachments: StoredAttachment[]): Promise<void> {
+	if (!attachments.length) return;
+	try {
+		await bucket.delete(attachments.map((att) => `attachments/${att.email_id}/${att.id}/${att.filename}`));
+	} catch (error) {
+		// Cleanup must not replace the delivery error shown to the sender.
+		console.error("Rejected email attachment cleanup failed:", error instanceof Error ? error.name : "UnknownError");
+	}
+}
+
 /**
  * Store base64-encoded attachments to R2 and return metadata for the DO.
  */
