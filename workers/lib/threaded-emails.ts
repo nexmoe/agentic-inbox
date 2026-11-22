@@ -105,6 +105,17 @@ export function threadedEmailsQuery(folder: string, limit: number, unreadOnly = 
 			) AS rn
 			FROM all_emails_with_conversation
 		),
+		latest_sent_per_conversation AS (
+			SELECT ae.conversation_id, ae.id AS tracking_email_id,
+				t.email_id IS NOT NULL AS tracking_enabled, t.open_count AS tracking_open_count,
+				t.first_opened_at AS tracking_first_opened_at, t.last_opened_at AS tracking_last_opened_at,
+				ROW_NUMBER() OVER (
+					PARTITION BY ae.conversation_id ORDER BY COALESCE(ae.date, '') DESC, ae.id ASC
+				) AS rn
+			FROM all_emails_with_conversation ae
+			LEFT JOIN email_tracking t ON t.email_id = ae.id
+			WHERE t.email_id IS NOT NULL OR ae.folder_id = 'sent'
+		),
 		latest_in_folder AS (
 			SELECT fe.*, COALESCE(tc.conversation_id, fe.raw_thread_id) AS conversation_id,
 				SUM(CASE WHEN fe.read = 0 THEN 1 ELSE 0 END) OVER (
@@ -121,6 +132,8 @@ export function threadedEmailsQuery(folder: string, limit: number, unreadOnly = 
 			lif.read, lif.starred, lif.track_opens, lif.thread_id, lif.folder_id,
 			lif.in_reply_to, lif.email_references, SUBSTR(lif.body, 1, 300) AS snippet,
 			cs.thread_count, lif.folder_unread_count AS thread_unread_count, cs.participants,
+			ls.tracking_email_id, ls.tracking_enabled, ls.tracking_open_count,
+			ls.tracking_first_opened_at, ls.tracking_last_opened_at,
 			CASE WHEN lmc.folder_id != (SELECT id FROM folders WHERE name = 'sent' LIMIT 1)
 				AND lmc.folder_id != (SELECT id FROM folders WHERE name = 'draft' LIMIT 1)
 				AND cs.thread_read_count > 0 THEN 1 ELSE 0 END AS needs_reply,
@@ -128,6 +141,7 @@ export function threadedEmailsQuery(folder: string, limit: number, unreadOnly = 
 		FROM latest_in_folder lif
 		JOIN conversation_stats cs ON lif.conversation_id = cs.conversation_id
 		LEFT JOIN latest_message_per_conversation lmc ON lmc.conversation_id = lif.conversation_id AND lmc.rn = 1
+		LEFT JOIN latest_sent_per_conversation ls ON ls.conversation_id = lif.conversation_id AND ls.rn = 1
 		WHERE lif.rn = 1 ${unreadOnly ? "AND lif.folder_unread_count > 0" : ""} ${after}
 		ORDER BY COALESCE(lif.date, '') DESC, lif.id ASC ${page}`,
 		params,

@@ -33,6 +33,7 @@ function fixture(data) {
 	for (const [mailboxId, messages] of Object.entries(data)) {
 		const db = new DatabaseSync(":memory:");
 		db.exec("CREATE TABLE folders (id TEXT PRIMARY KEY, name TEXT); INSERT INTO folders VALUES ('inbox', 'inbox'), ('sent', 'sent'), ('draft', 'draft')");
+		db.exec("CREATE TABLE email_tracking (email_id TEXT PRIMARY KEY, open_count INTEGER, first_opened_at INTEGER, last_opened_at INTEGER)");
 		db.exec(`CREATE TABLE emails (id TEXT PRIMARY KEY, subject TEXT, ai_title TEXT, sender TEXT, recipient TEXT, cc TEXT, bcc TEXT, date TEXT,
 		 read INTEGER, starred INTEGER, track_opens INTEGER, in_reply_to TEXT, email_references TEXT, thread_id TEXT, folder_id TEXT, body TEXT)`);
 		const insert = db.prepare("INSERT INTO emails (id, date, folder_id, body, subject, ai_title, read, thread_id, in_reply_to) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");

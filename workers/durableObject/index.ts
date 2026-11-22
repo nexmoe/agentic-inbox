@@ -17,6 +17,7 @@ import type { EmailSearchCursor, EmailSearchFilters, EmailSearchResult } from ".
 import { applyMigrations, mailboxMigrations } from "./migrations";
 import { automatedOpen, OPEN_DEDUPLICATION_MS, OPEN_TOKEN_PATTERN, type OpenClient } from "../lib/open-tracking";
 import type { EmailOpenTracking } from "../../shared/email-tracking";
+import { withOpenTracking } from "../lib/open-tracking-summary";
 
 const ALLOWED_SORT_COLUMNS = [
 	"id",
@@ -100,7 +101,7 @@ export class MailboxDO extends DurableObject<Env> {
 		const query = unifiedEmailsQuery(folder, mailboxId, rawLimit, cursor, unreadOnly);
 		const emails = [...this.ctx.storage.sql.exec(query.sql, ...query.params)];
 		return emails.map((email) => ({
-			...email, id: String(email.id), subject: String(email.subject ?? ""),
+			...withOpenTracking(email), id: String(email.id), subject: String(email.subject ?? ""),
 			sender: String(email.sender ?? ""), recipient: String(email.recipient ?? ""),
 			date: String(email.date ?? ""), read: !!email.read, starred: !!email.starred,
 			track_opens: !!email.track_opens, needs_reply: !!email.needs_reply, has_draft: !!email.has_draft,
@@ -220,7 +221,7 @@ export class MailboxDO extends DurableObject<Env> {
 		const limit = Math.min(Math.max(rawLimit, 1), 100);
 		const query = threadedEmailsQuery(folder, limit, unreadOnly, { offset: (page - 1) * limit });
 		return [...this.ctx.storage.sql.exec(query.sql, ...query.params)].map((row: any) => ({
-			...row,
+			...withOpenTracking(row),
 			read: !!row.read,
 			starred: !!row.starred,
 			track_opens: !!row.track_opens,
@@ -261,6 +262,8 @@ export class MailboxDO extends DurableObject<Env> {
 			read: !!email.read,
 			starred: !!email.starred,
 			track_opens: !!email.track_opens,
+			open_tracking: email.track_opens || email.folder_id === Folders.SENT
+				? { emailId: email.id, ...(await this.getEmailOpenTracking(email.id))! } : null,
 			attachments: emailAttachments,
 		};
 	}
@@ -273,7 +276,12 @@ export class MailboxDO extends DurableObject<Env> {
 	async getThreadEmails(threadId: string) {
 		const emailRows = [
 			...this.ctx.storage.sql.exec(
-				`SELECT * FROM emails WHERE thread_id = ?1 ORDER BY date ASC`,
+				`SELECT e.*,
+					CASE WHEN t.email_id IS NOT NULL OR e.folder_id = 'sent' THEN e.id END AS tracking_email_id,
+					t.email_id IS NOT NULL AS tracking_enabled, t.open_count AS tracking_open_count,
+					t.first_opened_at AS tracking_first_opened_at, t.last_opened_at AS tracking_last_opened_at
+				FROM emails e LEFT JOIN email_tracking t ON t.email_id = e.id
+				WHERE e.thread_id = ?1 ORDER BY e.date ASC`,
 				threadId,
 			),
 		] as any[];
@@ -300,7 +308,7 @@ export class MailboxDO extends DurableObject<Env> {
 		}
 
 		return emailRows.map((email) => ({
-			...email,
+			...withOpenTracking(email),
 			read: !!email.read,
 			starred: !!email.starred,
 			track_opens: !!email.track_opens,

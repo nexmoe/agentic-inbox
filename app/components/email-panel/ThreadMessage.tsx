@@ -21,6 +21,7 @@ import {
 } from "~/lib/utils";
 import type { Email } from "~/types";
 import EmailOpenTracking from "./EmailOpenTracking";
+import EmailOpenStatus from "./EmailOpenStatus";
 
 interface ThreadMessageProps {
 	email: Email;
@@ -82,6 +83,7 @@ export default function ThreadMessage({
 						<p className="text-xs text-kumo-subtle truncate">
 							{stripHtml(email.body || "").slice(0, 80)}
 						</p>
+						{!isDraft && email.open_tracking && <div className="mt-1"><EmailOpenStatus tracking={email.open_tracking} /></div>}
 					</div>
 					<CaretDownIcon size={14} className="text-kumo-subtle shrink-0" />
 				</button>
@@ -112,7 +114,8 @@ export default function ThreadMessage({
 								{isDraft && <Badge variant="outline">Draft</Badge>}
 							</div>
 							<div className="text-xs text-kumo-subtle">To: {email.recipient}</div>
-							{mailboxId && !isDraft && email.track_opens && <EmailOpenTracking mailboxId={mailboxId} emailId={email.id} />}
+							{mailboxId && !isDraft && email.track_opens && <EmailOpenTracking mailboxId={mailboxId} emailId={email.id} initialTracking={email.open_tracking} />}
+							{!isDraft && !email.track_opens && email.folder_id === "sent" && <div className="mt-2"><EmailOpenStatus tracking={null} /></div>}
 						</div>
 					</div>
 					<div className="flex items-center gap-1 shrink-0">

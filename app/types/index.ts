@@ -2,6 +2,8 @@
 // Licensed under the Apache 2.0 license found in the LICENSE file or at:
 //     https://opensource.org/licenses/Apache-2.0
 
+import type { EmailOpenTrackingSummary } from "../../shared/email-tracking";
+
 export interface SignatureSettings {
 	enabled: boolean;
 	text: string;
@@ -44,6 +46,7 @@ export interface Email {
 	message_id?: string | null;
 	raw_headers?: string | null;
 	track_opens?: boolean;
+	open_tracking?: EmailOpenTrackingSummary | null;
 	attachments?: Attachment[];
 	snippet?: string | null;
 	// Thread aggregate fields (only present in threaded list view)
