@@ -17,6 +17,9 @@ import {
 import { useDeleteEmail, useForwardEmail, useReplyToEmail, useSaveDraft, useSendEmail } from "~/queries/emails";
 import { useMailbox } from "~/queries/mailboxes";
 import { useUIStore } from "~/hooks/useUIStore";
+import { useQuery } from "@tanstack/react-query";
+import api from "~/services/api";
+import { queryKeys } from "~/queries/keys";
 
 function appendUniqueAddress(
 	addresses: string[],
@@ -41,6 +44,7 @@ interface ComposeFormFields {
 	showCcBcc: boolean;
 	subject: string;
 	body: string;
+	trackOpens: boolean;
 }
 
 const EMPTY_FIELDS: ComposeFormFields = {
@@ -50,6 +54,7 @@ const EMPTY_FIELDS: ComposeFormFields = {
 	showCcBcc: false,
 	subject: "",
 	body: "",
+	trackOpens: false,
 };
 
 function getPrefixedSubject(subject: string, prefix: "Re" | "Fwd") {
@@ -119,6 +124,7 @@ function buildInitialComposeFields(
 			showCcBcc: Boolean(draft.cc || draft.bcc),
 			subject: draft.subject || "",
 			body: draft.body || "",
+			trackOpens: !!draft.track_opens,
 		};
 	}
 
@@ -166,6 +172,7 @@ export function useComposeForm(mailboxId?: string, _folder?: string) {
 	const toastManager = useKumoToastManager();
 	const { composeOptions, closePanel, closeCompose } = useUIStore();
 	const { data: currentMailbox } = useMailbox(mailboxId);
+	const { data: config } = useQuery({ queryKey: queryKeys.config, queryFn: () => api.getConfig() });
 	const sendEmailMutation = useSendEmail();
 	const saveDraftMutation = useSaveDraft();
 	const replyMutation = useReplyToEmail();
@@ -178,6 +185,7 @@ export function useComposeForm(mailboxId?: string, _folder?: string) {
 	const [showCcBcc, setShowCcBcc] = useState(false);
 	const [subject, setSubject] = useState("");
 	const [body, setBody] = useState("");
+	const [trackOpens, setTrackOpens] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [isSavingDraft, setIsSavingDraft] = useState(false);
 	const [isSending, setIsSending] = useState(false);
@@ -207,6 +215,7 @@ export function useComposeForm(mailboxId?: string, _folder?: string) {
 		setShowCcBcc(initialFields.showCcBcc);
 		setSubject(initialFields.subject);
 		setBody(initialFields.body);
+		setTrackOpens(initialFields.trackOpens);
 	}, [composeOptions, currentMailbox?.email, sigBlock]);
 
 	const handleSaveDraft = async () => {
@@ -218,6 +227,7 @@ export function useComposeForm(mailboxId?: string, _folder?: string) {
 				bcc: bcc || undefined,
 				subject,
 				body,
+				trackOpens,
 				in_reply_to: composeOptions.originalEmail?.id || composeOptions.draftEmail?.in_reply_to || undefined,
 				thread_id: composeOptions.originalEmail?.thread_id || composeOptions.draftEmail?.thread_id || undefined,
 				draft_id: composeOptions.draftEmail?.id || undefined,
@@ -248,6 +258,7 @@ export function useComposeForm(mailboxId?: string, _folder?: string) {
 			subject,
 			html: body,
 			text: htmlToPlainText(body),
+			trackOpens,
 		};
 		const draftId = composeOptions.draftEmail?.id; const mode = composeOptions.mode; const originalId = composeOptions.originalEmail?.id || composeOptions.draftEmail?.in_reply_to;
 		setIsSending(true); toastManager.add({ title: "Sending email..." });
@@ -262,5 +273,5 @@ export function useComposeForm(mailboxId?: string, _folder?: string) {
 		finally { setIsSending(false); }
 	};
 
-	return { to, setTo, cc, setCc, bcc, setBcc, showCcBcc, setShowCcBcc, subject, setSubject, body, setBody, error, setError, isSavingDraft, isSending, formTitle, handleSaveDraft, handleSend, closeCompose, closePanel };
+	return { to, setTo, cc, setCc, bcc, setBcc, showCcBcc, setShowCcBcc, subject, setSubject, body, setBody, trackOpens, setTrackOpens, trackingAvailable: config?.openTrackingAvailable ?? false, error, setError, isSavingDraft, isSending, formTitle, handleSaveDraft, handleSend, closeCompose, closePanel };
 }

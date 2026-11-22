@@ -172,4 +172,19 @@ export const mailboxMigrations: Migration[] = [
 		name: "9_add_ai_title",
 		sql: txn(`ALTER TABLE emails ADD COLUMN ai_title TEXT;`),
 	},
+	{
+		name: "10_add_open_tracking",
+		sql: txn(`
+			ALTER TABLE emails ADD COLUMN track_opens INTEGER NOT NULL DEFAULT 0;
+			CREATE TABLE email_tracking (
+				email_id TEXT PRIMARY KEY REFERENCES emails(id) ON DELETE CASCADE,
+				token TEXT NOT NULL UNIQUE,
+				sent_at INTEGER NOT NULL,
+				open_count INTEGER NOT NULL DEFAULT 0,
+				first_opened_at INTEGER,
+				last_opened_at INTEGER,
+				recent_clients TEXT NOT NULL DEFAULT '[]'
+			);
+		`),
+	},
 ];

@@ -1,5 +1,9 @@
 # Cloudflare Access (required in production). TEAM_DOMAIN may be the base Access URL or the full /cdn-cgi/access/certs URL.
 POLICY_AUD=your-access-policy-audience-tag
 TEAM_DOMAIN=https://your-team.cloudflareaccess.com
+# Optional public origin for open-tracking images. Must be reachable without Access.
+OPEN_TRACKING_ORIGIN=
 # Required only when aiProvider is openai-compatible. Use a Worker secret in production.
 AI_API_KEY=
+# Auto-draft replies on new email (default off). Set to true to enable.
+# AUTO_DRAFT_REPLIES=false

@@ -14,6 +14,8 @@ import { unifiedEmailsQuery } from "../lib/unified-inbox";
 import { buildSearchConditions } from "../lib/email-search";
 import type { EmailSearchCursor, EmailSearchFilters, EmailSearchResult } from "../../shared/email-search";
 import { applyMigrations, mailboxMigrations } from "./migrations";
+import { automatedOpen, OPEN_DEDUPLICATION_MS, OPEN_TOKEN_PATTERN, type OpenClient } from "../lib/open-tracking";
+import type { EmailOpenTracking } from "../../shared/email-tracking";
 
 /**
  * SQL expression to normalize email subjects by stripping common
@@ -79,6 +81,7 @@ interface EmailData {
 	thread_id?: string | null;
 	message_id?: string | null;
 	raw_headers?: string | null;
+	track_opens?: boolean;
 }
 
 interface AttachmentData {
@@ -162,6 +165,7 @@ export class MailboxDO extends DurableObject<Env> {
 				date: schema.emails.date,
 				read: schema.emails.read,
 				starred: schema.emails.starred,
+				track_opens: schema.emails.track_opens,
 				in_reply_to: schema.emails.in_reply_to,
 				email_references: schema.emails.email_references,
 				thread_id: schema.emails.thread_id,
@@ -179,6 +183,7 @@ export class MailboxDO extends DurableObject<Env> {
 			...email,
 			read: !!email.read,
 			starred: !!email.starred,
+			track_opens: !!email.track_opens,
 		}));
 	}
 
@@ -273,7 +278,7 @@ export class MailboxDO extends DurableObject<Env> {
 				)
 				SELECT
 					lp.id, lp.subject, lp.ai_title, lp.sender, lp.recipient, lp.date,
-					lp.read, lp.starred, lp.thread_id, lp.folder_id,
+					lp.read, lp.starred, lp.track_opens, lp.thread_id, lp.folder_id,
 					lp.in_reply_to, lp.email_references,
 					SUBSTR(lp.body, 1, 300) as snippet,
 					ds.thread_count, ds.thread_unread_count, ds.participants
@@ -290,6 +295,7 @@ export class MailboxDO extends DurableObject<Env> {
 				...row,
 				read: !!row.read,
 				starred: !!row.starred,
+				track_opens: !!row.track_opens,
 				thread_count: row.thread_count || 1,
 				thread_unread_count: row.thread_unread_count || 0,
 				participants: row.participants || row.sender,
@@ -363,7 +369,7 @@ export class MailboxDO extends DurableObject<Env> {
 			)
 			SELECT
 				lif.id, lif.subject, lif.ai_title, lif.sender, lif.recipient, lif.date,
-				lif.read, lif.starred, lif.thread_id, lif.folder_id,
+				lif.read, lif.starred, lif.track_opens, lif.thread_id, lif.folder_id,
 				lif.in_reply_to, lif.email_references,
 				SUBSTR(lif.body, 1, 300) as snippet,
 				cs.thread_count, lif.folder_unread_count AS thread_unread_count, cs.participants,
@@ -387,6 +393,7 @@ export class MailboxDO extends DurableObject<Env> {
 			...row,
 			read: !!row.read,
 			starred: !!row.starred,
+			track_opens: !!row.track_opens,
 			thread_count: row.thread_count || 1,
 			thread_unread_count: row.thread_unread_count || 0,
 			participants: row.participants || row.sender,
@@ -468,6 +475,7 @@ export class MailboxDO extends DurableObject<Env> {
 			...email,
 			read: !!email.read,
 			starred: !!email.starred,
+			track_opens: !!email.track_opens,
 			attachments: emailAttachments,
 		};
 	}
@@ -510,8 +518,42 @@ export class MailboxDO extends DurableObject<Env> {
 			...email,
 			read: !!email.read,
 			starred: !!email.starred,
+			track_opens: !!email.track_opens,
 			attachments: attachmentsByEmail.get(email.id) || [],
 		}));
+	}
+
+	async getEmailOpenTracking(id: string): Promise<EmailOpenTracking | null> {
+		const row = [...this.ctx.storage.sql.exec<{
+			id: string; tracked_id: string | null; open_count: number | null;
+			first_opened_at: number | null; last_opened_at: number | null;
+		}>(`SELECT e.id, t.email_id AS tracked_id, t.open_count, t.first_opened_at, t.last_opened_at
+			FROM emails e LEFT JOIN email_tracking t ON t.email_id = e.id WHERE e.id = ?`, id)][0];
+		if (!row) return null;
+		return {
+			enabled: row.tracked_id !== null,
+			openCount: row.open_count ?? 0,
+			firstOpenedAt: row.first_opened_at === null ? null : new Date(row.first_opened_at).toISOString(),
+			lastOpenedAt: row.last_opened_at === null ? null : new Date(row.last_opened_at).toISOString(),
+		};
+	}
+
+	async recordEmailOpen(token: string, client: OpenClient): Promise<void> {
+		if (!OPEN_TOKEN_PATTERN.test(token) || !/^[a-f0-9]{64}$/.test(client.fingerprint)) return;
+		this.ctx.storage.transactionSync(() => {
+			const tracking = this.db.select().from(schema.emailTracking).where(eq(schema.emailTracking.token, token)).get();
+			const now = Date.now();
+			if (!tracking || automatedOpen(client, tracking.sent_at, now)) return;
+			// Keep only a bounded recent window, including interleaved clients and concurrent reloads.
+			const recent = (JSON.parse(tracking.recent_clients) as { fingerprint: string; at: number }[])
+				.filter((entry) => now - entry.at < OPEN_DEDUPLICATION_MS);
+			if (recent.some((entry) => entry.fingerprint === client.fingerprint)) return;
+			recent.push({ fingerprint: client.fingerprint, at: now });
+			this.ctx.storage.sql.exec(`UPDATE email_tracking
+				SET open_count = MIN(open_count + 1, 2147483647),
+					first_opened_at = COALESCE(first_opened_at, ?), last_opened_at = ?, recent_clients = ?
+				WHERE token = ?`, now, now, JSON.stringify(recent.slice(-64)), token);
+		});
 	}
 
 	/** Save the conversation title only on messages actually read by the Agent. */
@@ -803,6 +845,7 @@ export class MailboxDO extends DurableObject<Env> {
 		folder: string,
 		email: EmailData,
 		attachments: AttachmentData[],
+		trackingToken?: string,
 	) {
 		// Resolve folder name or ID to the actual folder ID.
 		const folderRow = this.db
@@ -821,33 +864,45 @@ export class MailboxDO extends DurableObject<Env> {
 
 		const folderId = folderRow.id;
 		const isSent = folderId === Folders.SENT;
+		if (trackingToken && (!isSent || !email.track_opens || !OPEN_TOKEN_PATTERN.test(trackingToken))) {
+			throw new Error("Invalid tracking metadata for outgoing email");
+		}
 
 		// Sent emails are always read — the sender obviously knows what they wrote.
 		// This prevents sent replies from inflating thread_unread_count.
-		this.db
-			.insert(schema.emails)
-			.values({
-				id: email.id,
-				folder_id: folderId,
-				subject: email.subject,
-				sender: email.sender,
-				recipient: email.recipient,
-				cc: email.cc ?? null,
-				bcc: email.bcc ?? null,
-				date: email.date,
-				read: isSent ? 1 : (email.read ? 1 : 0),
-				starred: email.starred ? 1 : 0,
-				body: email.body,
-				in_reply_to: email.in_reply_to ?? null,
-				email_references: email.email_references ?? null,
-				thread_id: email.thread_id ?? null,
-				message_id: email.message_id ?? null,
-				raw_headers: email.raw_headers ?? null,
-			})
-			.run();
+		this.ctx.storage.transactionSync(() => {
+			this.db
+				.insert(schema.emails)
+				.values({
+					id: email.id,
+					folder_id: folderId,
+					subject: email.subject,
+					sender: email.sender,
+					recipient: email.recipient,
+					cc: email.cc ?? null,
+					bcc: email.bcc ?? null,
+					date: email.date,
+					read: isSent ? 1 : (email.read ? 1 : 0),
+					starred: email.starred ? 1 : 0,
+					body: email.body,
+					in_reply_to: email.in_reply_to ?? null,
+					email_references: email.email_references ?? null,
+					thread_id: email.thread_id ?? null,
+					message_id: email.message_id ?? null,
+					raw_headers: email.raw_headers ?? null,
+					track_opens: email.track_opens ? 1 : 0,
+				})
+				.run();
 
-		if (attachments.length > 0) {
-			this.db.insert(schema.attachments).values(attachments).run();
-		}
+			if (attachments.length > 0) {
+				this.db.insert(schema.attachments).values(attachments).run();
+			}
+			if (trackingToken) {
+				const sentAt = Date.parse(email.date);
+				this.db.insert(schema.emailTracking).values({
+					email_id: email.id, token: trackingToken, sent_at: Number.isFinite(sentAt) ? sentAt : Date.now(),
+				}).run();
+			}
+		});
 	}
 }

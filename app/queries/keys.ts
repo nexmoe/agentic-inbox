@@ -20,6 +20,9 @@ export const queryKeys = {
 		detail: (mailboxId: string, threadId: string, revision: string) =>
 			["email-summaries", mailboxId, threadId, revision] as const,
 	},
+	emailTracking: {
+		detail: (mailboxId: string, emailId: string) => ["email-tracking", mailboxId, emailId] as const,
+	},
 	unifiedEmails: {
 		all: ["unified-emails"] as const,
 		infinite: (folder: string, unreadOnly = false) => ["unified-emails", "infinite", folder, unreadOnly] as const,

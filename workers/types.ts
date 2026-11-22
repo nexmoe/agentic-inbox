@@ -5,4 +5,6 @@
 export interface Env extends Cloudflare.Env {
 	POLICY_AUD: string;
 	TEAM_DOMAIN: string;
+	/** "true" to auto-draft replies on new email; default off. Matches generated bindings. */
+	AUTO_DRAFT_REPLIES: Cloudflare.Env["AUTO_DRAFT_REPLIES"];
 }

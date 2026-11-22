@@ -6,6 +6,7 @@ import * as entrypoint from "./workers/app" with { type: "cf-worker" };
 interface DeploymentSettings {
 	accountId?: string;
 	webDomain?: string;
+	trackingOrigin?: string;
 	domains: string[];
 	emailAddresses: string[];
 	emailCatchAll: Record<string, string>;
@@ -14,6 +15,8 @@ interface DeploymentSettings {
 	aiBaseUrl: string;
 	aiModel: string;
 	aiPreviousModels: string[];
+	/** When true, AI auto-drafts replies on new email. Default false. */
+	autoDraftReplies?: boolean;
 }
 
 const localSettingsPath = ".cloudflare/deployment.json";
@@ -26,6 +29,7 @@ const deployment: DeploymentSettings = {
 	aiBaseUrl: "",
 	aiModel: "@cf/zai-org/glm-4.7-flash",
 	aiPreviousModels: [],
+	autoDraftReplies: false,
 	...(existsSync(localSettingsPath) ? JSON.parse(readFileSync(localSettingsPath, "utf8")) : {}),
 };
 
@@ -57,6 +61,7 @@ export default defineConfig({
 			EMAIL_FORWARDING: bindings.json(deployment.emailForwarding),
 			POLICY_AUD: bindings.secret(),
 			TEAM_DOMAIN: bindings.secret(),
+			OPEN_TRACKING_ORIGIN: bindings.text(deployment.trackingOrigin ?? ""),
 			BUCKET: bindings.r2({ name: "agentic-inbox" }),
 			EMAIL: bindings.sendEmail({ dev: { remote: true } }),
 			MAILBOX: bindings.durableObject<typeof worker, "MailboxDO">({ worker, exportName: "MailboxDO" }),
@@ -67,6 +72,7 @@ export default defineConfig({
 			AI_BASE_URL: bindings.text(deployment.aiBaseUrl),
 			AI_MODEL: bindings.text(deployment.aiModel),
 			AI_PREVIOUS_MODELS: bindings.json(deployment.aiPreviousModels),
+			AUTO_DRAFT_REPLIES: bindings.text(deployment.autoDraftReplies ? "true" : "false"),
 			...(deployment.aiProvider === "openai-compatible" ? { AI_API_KEY: bindings.secret() } : {}),
 		},
 	},

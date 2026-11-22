@@ -5,6 +5,7 @@
 import type { Email, Folder, Mailbox } from "~/types";
 import type { EmailSummary, EmailSummaryState } from "../../shared/email-summary";
 import type { UnifiedEmailPage } from "../../shared/unified-inbox";
+import type { EmailOpenTracking } from "../../shared/email-tracking";
 
 const REQUEST_TIMEOUT_MS = 30_000;
 
@@ -100,7 +101,7 @@ interface EmailListResponse {
 const api = {
 	// Config
 	getConfig: () =>
-		get<{ domains: string[]; emailAddresses: string[] }>("/api/v1/config"),
+		get<{ domains: string[]; emailAddresses: string[]; openTrackingAvailable: boolean }>("/api/v1/config"),
 
 	// Mailboxes
 	listMailboxes: () => get<Mailbox[]>("/api/v1/mailboxes"),
@@ -122,6 +123,8 @@ const api = {
 		post<void>(`/api/v1/mailboxes/${mailboxId}/emails`, email),
 	getEmail: (mailboxId: string, id: string, opts?: { signal?: AbortSignal }) =>
 		get<Email>(`/api/v1/mailboxes/${mailboxId}/emails/${id}`, { signal: opts?.signal }),
+	getEmailOpenTracking: (mailboxId: string, id: string, opts?: { signal?: AbortSignal }) =>
+		get<EmailOpenTracking>(`/api/v1/mailboxes/${encodeURIComponent(mailboxId)}/emails/${encodeURIComponent(id)}/opens`, opts),
 	summarizeEmail: (mailboxId: string, id: string, opts?: { signal?: AbortSignal }) =>
 		// Include headroom for Access validation and mailbox RPCs around the 90s gateway call.
 		post<EmailSummary>(`/api/v1/mailboxes/${mailboxId}/emails/${id}/summary`, undefined, { ...opts, timeoutMs: 190_000 }),
@@ -150,6 +153,7 @@ const api = {
 			in_reply_to?: string;
 			thread_id?: string;
 			draft_id?: string;
+			trackOpens?: boolean;
 		},
 	) => post<{ draft_id: string }>(`/api/v1/mailboxes/${mailboxId}/drafts`, draft),
 	replyToEmail: (mailboxId: string, emailId: string, email: unknown) =>

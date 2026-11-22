@@ -8,12 +8,14 @@ import { formatDetailDate } from "~/lib/utils";
 import { getSenderDetails } from "~/lib/sender";
 import SenderAvatar from "~/components/email-panel/SenderAvatar";
 import type { Email } from "~/types";
+import EmailOpenTracking from "./EmailOpenTracking";
 
 interface EmailPanelHeaderProps {
 	subject: string;
 	messageCount: number;
 	showThreadCount: boolean;
 	email?: Email;
+	mailboxId?: string;
 }
 
 export default function EmailPanelHeader({
@@ -21,6 +23,7 @@ export default function EmailPanelHeader({
 	messageCount,
 	showThreadCount,
 	email,
+	mailboxId,
 }: EmailPanelHeaderProps) {
 	const { name: senderName, address: senderAddress, label: senderLabel } = getSenderDetails(email?.sender);
 
@@ -41,6 +44,7 @@ export default function EmailPanelHeader({
 							{senderName && <span className={`${typeClass("caption")} [overflow-wrap:anywhere] text-muted-foreground`}>{senderAddress}</span>}
 						</div>
 						<p className={`mt-0.5 [overflow-wrap:anywhere] text-muted-foreground ${typeClass("caption")}`}>To: {email.recipient}</p>
+						{mailboxId && email.track_opens && email.folder_id !== "draft" && <EmailOpenTracking mailboxId={mailboxId} emailId={email.id} />}
 					</div>
 					<time dateTime={email.date} className={`${typeClass("caption")} col-start-2 text-muted-foreground @[480px]:col-start-3 @[480px]:row-start-1 @[480px]:whitespace-nowrap`}>
 						{formatDetailDate(email.date)}
