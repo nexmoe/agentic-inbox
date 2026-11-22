@@ -15,6 +15,43 @@ async function createRuntime() {
 	});
 }
 
+test("unified Inbox paginates each mailbox's threads once using the latest Inbox message", async () => {
+	const runtime = await createRuntime();
+	try {
+		const seed = await runtime.dispatchFetch("https://test/__seed", { method: "POST", body: JSON.stringify({
+			"a@example.com": [
+				{ id: "old-a", subject: "Proposal", thread_id: "thread-a", date: "2026-10-01", read: false },
+				{ id: "middle-a", subject: "Re: Proposal", thread_id: "thread-a", date: "2026-10-03", read: true },
+				{ id: "latest-a", subject: "Re: Proposal", thread_id: "thread-a", date: "2026-10-09", read: true },
+				{ id: "sent-a", subject: "Re: Proposal", thread_id: "thread-a", folder: "sent", date: "2026-10-10", read: true },
+				{ id: "old-b", subject: "Meeting", thread_id: "thread-b", date: "2026-10-02", read: true },
+				{ id: "latest-b", subject: "Re: Meeting", thread_id: "thread-b", date: "2026-10-08", read: true },
+			],
+			"b@example.com": [
+				{ id: "old-a", subject: "Proposal", thread_id: "thread-a", date: "2026-10-02", read: false },
+				{ id: "latest-a", subject: "Re: Proposal", thread_id: "thread-a", date: "2026-10-09", read: true },
+				{ id: "standalone", subject: "Separate conversation", date: "2026-10-01", read: true },
+			],
+		}) });
+		assert.equal(seed.status, 204);
+		const seen = [];
+		let cursor;
+		do {
+			const response = await runtime.dispatchFetch(`https://test/api/v1/emails?folder=inbox&limit=1${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`);
+			assert.equal(response.status, 200);
+			const page = await response.json();
+			assert.equal(page.totalCount, 4, "Count conversations rather than individual messages");
+			seen.push(...page.emails);
+			cursor = page.nextCursor;
+		} while (cursor);
+		assert.deepEqual(seen.map((email) => `${email.mailbox_id}/${email.id}`), [
+			"a@example.com/latest-a", "b@example.com/latest-a", "a@example.com/latest-b", "b@example.com/standalone",
+		]);
+		assert.equal(seen[0].thread_count, 4, "Conversation metadata includes sent replies");
+		assert.equal(seen[0].thread_unread_count, 1, "An older unread message keeps the thread unread");
+	} finally { await runtime.dispose(); }
+});
+
 test("unread APIs count and paginate complete conversations, including read latest messages and grouped drafts", async () => {
 	const runtime = await createRuntime();
 	const get = async (path) => {
@@ -56,9 +93,17 @@ test("unread APIs count and paginate complete conversations, including read late
 		assert.ok(regular.emails.every((email) => !email.read));
 		const unified = await get("/api/v1/emails?folder=inbox&unread=true&limit=1");
 		assert.equal(unified.totalCount, 3);
-		assert.equal(unified.emails[0].mailbox_id, "b@example.com");
+		assert.equal(unified.emails[0].mailbox_id, "a@example.com");
+		assert.equal(unified.emails[0].id, "latest-read");
+		assert.equal(unified.emails[0].thread_unread_count, 1);
 		const next = await get(`/api/v1/emails?folder=inbox&unread=true&limit=1&cursor=${encodeURIComponent(unified.nextCursor)}`);
-		assert.deepEqual(next.emails.map((email) => email.id), ["legacy-unread"]);
+		assert.deepEqual(next.emails.map((email) => email.id), ["legacy-read"]);
+		const last = await get(`/api/v1/emails?folder=inbox&unread=true&limit=1&cursor=${encodeURIComponent(next.nextCursor)}`);
+		assert.deepEqual(last.emails.map((email) => email.id), ["other-unread"]);
+		assert.equal(last.nextCursor, null);
+		const unifiedDrafts = await get("/api/v1/emails?folder=draft&unread=true");
+		assert.equal(unifiedDrafts.totalCount, 1);
+		assert.deepEqual(unifiedDrafts.emails.map((email) => email.id), ["draft-new"]);
 		assert.equal((await runtime.dispatchFetch(`https://test/api/v1/emails?folder=inbox&cursor=${encodeURIComponent(unified.nextCursor)}`)).status, 400);
 		const read = await runtime.dispatchFetch(`https://test${path}/old-unread`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ read: true }) });
 		assert.equal(read.status, 200);

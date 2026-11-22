@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import { decodeUnifiedCursor, listUnifiedEmails, unifiedEmailsQuery } from "../workers/lib/unified-inbox.ts";
+import { countThreadedEmailsQuery } from "../workers/lib/threaded-emails.ts";
 import { applyMigrations, mailboxMigrations } from "../workers/durableObject/migrations.ts";
 
 test("AI title migration upgrades existing mailboxes once without changing original messages", () => {
@@ -31,10 +32,11 @@ function fixture(data) {
 	const databases = new Map();
 	for (const [mailboxId, messages] of Object.entries(data)) {
 		const db = new DatabaseSync(":memory:");
+		db.exec("CREATE TABLE folders (id TEXT PRIMARY KEY, name TEXT); INSERT INTO folders VALUES ('inbox', 'inbox'), ('sent', 'sent'), ('draft', 'draft')");
 		db.exec(`CREATE TABLE emails (id TEXT PRIMARY KEY, subject TEXT, ai_title TEXT, sender TEXT, recipient TEXT, cc TEXT, bcc TEXT, date TEXT,
-		 read INTEGER, starred INTEGER, in_reply_to TEXT, email_references TEXT, thread_id TEXT, folder_id TEXT, body TEXT)`);
-		const insert = db.prepare("INSERT INTO emails (id, date, folder_id, body, subject, ai_title, read) VALUES (?, ?, ?, ?, ?, ?, ?)");
-		for (const message of messages) insert.run(message.id, message.date, message.folder ?? "inbox", message.body ?? "Full email body", message.subject ?? "Original subject", message.title ?? null, message.read ? 1 : 0);
+		 read INTEGER, starred INTEGER, track_opens INTEGER, in_reply_to TEXT, email_references TEXT, thread_id TEXT, folder_id TEXT, body TEXT)`);
+		const insert = db.prepare("INSERT INTO emails (id, date, folder_id, body, subject, ai_title, read, thread_id, in_reply_to) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+		for (const message of messages) insert.run(message.id, message.date, message.folder ?? "inbox", message.body ?? "Full email body", message.subject === undefined ? message.id : message.subject, message.title ?? null, message.read ? 1 : 0, message.thread_id ?? null, message.in_reply_to ?? null);
 		databases.set(mailboxId, db);
 	}
 	const fetchSizes = [];
@@ -42,7 +44,8 @@ function fixture(data) {
 		fetchSizes.push(size);
 		const db = databases.get(mailboxId);
 		const query = unifiedEmailsQuery(folder, mailboxId, size, before, unreadOnly);
-		return { emails: db.prepare(query.sql).all(...query.params), totalCount: db.prepare(`SELECT COUNT(*) AS count FROM emails WHERE folder_id = ? ${unreadOnly ? "AND read = 0" : ""}`).get(folder).count };
+		const count = countThreadedEmailsQuery(folder, unreadOnly);
+		return { emails: db.prepare(query.sql).all(...query.params), totalCount: db.prepare(count.sql).get(...count.params).total };
 	});
 	return { page, fetchSizes, databases, close: () => { for (const db of databases.values()) db.close(); } };
 }
@@ -63,12 +66,50 @@ test("merges all mailboxes by date and keeps mailbox identity when email IDs ove
 });
 
 test("unified pages carry saved AI titles separately from original subjects", async () => {
-	const f = fixture({ "a@example.com": [{ id: "titled", date: "2026-10-09", title: "周五前审核方案" }, { id: "pending", date: "2026-10-08" }] });
+	const f = fixture({ "a@example.com": [{ id: "titled", date: "2026-10-09", subject: "Original subject", title: "周五前审核方案" }, { id: "pending", date: "2026-10-08" }] });
 	try {
 		const page = await f.page(25);
 		assert.equal(page.emails[0].ai_title, "周五前审核方案");
 		assert.equal(page.emails[0].subject, "Original subject");
 		assert.equal(page.emails[1].ai_title, null);
+	} finally { f.close(); }
+});
+
+test("thread representatives stay unique across cursor pages, subject changes and equal timestamps", async () => {
+	const f = fixture({ "a@example.com": [
+		{ id: "older", date: "2026-10-01", subject: "Proposal", thread_id: "thread-a" },
+		{ id: "latest-b", date: "2026-10-09", subject: "Re: Proposal", thread_id: "thread-a" },
+		{ id: "latest-a", date: "2026-10-09", subject: "Updated proposal", thread_id: "thread-a", read: true, title: "Latest title" },
+		{ id: "other", date: "2026-10-08", subject: "Proposal", thread_id: "thread-b" },
+	] });
+	try {
+		const first = await f.page(1, undefined, "inbox", true);
+		assert.equal(first.totalCount, 2);
+		assert.equal(first.emails[0].id, "latest-a");
+		assert.equal(first.emails[0].ai_title, "Latest title");
+		assert.equal(first.emails[0].thread_count, 3);
+		assert.equal(first.emails[0].thread_unread_count, 2);
+		const second = await f.page(1, decodeUnifiedCursor(first.nextCursor, "inbox", true), "inbox", true);
+		assert.deepEqual(second.emails.map((email) => email.id), ["other"]);
+		assert.equal(second.nextCursor, null);
+	} finally { f.close(); }
+});
+
+test("legacy subject groups and independent messages without subjects have matching conversation counts", async () => {
+	const f = fixture({ "a@example.com": [
+		{ id: "legacy-old", date: "2026-10-01", subject: "Proposal" },
+		{ id: "legacy-new", date: "2026-10-09", subject: "Re: Proposal", read: true },
+		{ id: "blank-a", date: "2026-10-03", subject: "" },
+		{ id: "blank-b", date: "2026-10-02", subject: "" },
+		{ id: "null-a", date: null, subject: null },
+		{ id: "null-b", date: null, subject: null },
+	] });
+	try {
+		const page = await f.page(25);
+		assert.equal(page.totalCount, 5);
+		assert.deepEqual(page.emails.map((email) => email.id), ["legacy-new", "blank-a", "blank-b", "null-a", "null-b"]);
+		assert.equal(page.emails[0].thread_count, 2);
+		assert.equal((await f.page(25, undefined, "inbox", true)).totalCount, 5);
 	} finally { f.close(); }
 });
 
@@ -107,7 +148,7 @@ test("rejects malformed and cross-folder cursors; SQL parameters keep cursor con
 	}
 	const query = unifiedEmailsQuery("inbox", "a", 999, { date: "' OR 1=1 --", mailboxId: "a", id: "' DROP TABLE emails", folder: "inbox" });
 	assert.doesNotMatch(query.sql, /DROP TABLE|1=1/);
-	assert.equal(query.params.at(-1), 51);
+	assert.equal(query.params[1], 51);
 });
 
 test("an unavailable mailbox fails the unified list instead of silently hiding its emails", async () => {
