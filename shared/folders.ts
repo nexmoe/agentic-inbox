@@ -21,6 +21,9 @@ export const Folders = {
 
 export type FolderId = (typeof Folders)[keyof typeof Folders];
 
+/** Virtual mail view; never persisted as a folder or used as a move target. */
+export const STARRED_VIEW_ID = "starred";
+
 /**
  * System folder IDs that appear in the sidebar (excludes spam).
  * Order here matches the sidebar display order.

@@ -4,7 +4,7 @@ import { useLocation, useNavigate, useParams, useSearchParams } from "react-rout
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
 import type { IconComponentProps } from "@/lib/icon-context";
 import MailboxLogo from "~/components/MailboxLogo";
-import { SYSTEM_FOLDER_IDS, Folders } from "shared/folders";
+import { SYSTEM_FOLDER_IDS, Folders, STARRED_VIEW_ID } from "shared/folders";
 import { useActiveMailboxId, useUnifiedMailbox } from "~/hooks/useActiveMailbox";
 import { useUIStore } from "~/hooks/useUIStore";
 import { useMailboxes } from "~/queries/mailboxes";
@@ -36,7 +36,7 @@ export default function MailboxSelector() {
 			navigate(`${base}/search${query ? `?${query}` : ""}`);
 			return;
 		}
-		const targetFolder = (SYSTEM_FOLDER_IDS as readonly string[]).includes(folder ?? "") ? folder : Folders.INBOX;
+		const targetFolder = folder === STARRED_VIEW_ID || (SYSTEM_FOLDER_IDS as readonly string[]).includes(folder ?? "") ? folder : Folders.INBOX;
 		const query = searchParams.get("unread") === "true" ? "?unread=true" : "";
 		if (value === "all") {
 			navigate(`/all/emails/${targetFolder}${query}`);

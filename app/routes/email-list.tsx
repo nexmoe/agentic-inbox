@@ -11,13 +11,14 @@ import {
 	FileIcon,
 	PaperPlaneTiltIcon,
 	PencilSimpleIcon,
+	StarIcon,
 	TrashIcon,
 	TrayIcon,
 } from "@phosphor-icons/react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef } from "react";
 import { useParams, useSearchParams } from "react-router";
-import { Folders } from "shared/folders";
+import { Folders, STARRED_VIEW_ID } from "shared/folders";
 import { formatListDate } from "shared/dates";
 import MailboxSplitView from "~/components/MailboxSplitView";
 import MobileSidebarToggle from "~/components/MobileSidebarToggle";
@@ -38,6 +39,7 @@ import {
 } from "~/queries/emails";
 import { useFolders } from "~/queries/folders";
 import { queryKeys } from "~/queries/keys";
+import { useSearchEmails } from "~/queries/search";
 import { useUIStore } from "~/hooks/useUIStore";
 import { useActiveMailboxId, useUnifiedMailbox } from "~/hooks/useActiveMailbox";
 import type { Email } from "~/types";
@@ -51,6 +53,11 @@ const FOLDER_EMPTY_STATES: Record<
 		showCompose?: boolean;
 	}
 > = {
+	[STARRED_VIEW_ID]: {
+		icon: <StarIcon size={48} weight="thin" className="text-kumo-subtle" />,
+		title: "No starred emails",
+		description: "Star an email to find it here.",
+	},
 	[Folders.INBOX]: {
 		icon: <TrayIcon size={48} weight="thin" className="text-kumo-subtle" />,
 		title: "Your inbox is empty",
@@ -147,6 +154,7 @@ function FolderEmptyState({
 export default function EmailListRoute() {
 	const unified = useUnifiedMailbox();
 	const { folder } = useParams<{ folder: string }>();
+	const starredOnly = folder === STARRED_VIEW_ID;
 	const [searchParams, setSearchParams] = useSearchParams();
 	const unreadOnly = searchParams.get("unread") === "true";
 	const mailboxId = useActiveMailboxId();
@@ -175,9 +183,12 @@ export default function EmailListRoute() {
 		[folder, unreadOnly],
 	);
 
-	const mailboxQuery = useEmails(mailboxId, params, { enabled: !unified });
-	const unifiedQuery = useUnifiedEmails(folder || Folders.INBOX, unified, unreadOnly);
-	const activeQuery = unified ? unifiedQuery : mailboxQuery;
+	const mailboxQuery = useEmails(mailboxId, params, { enabled: !unified && !starredOnly });
+	const unifiedQuery = useUnifiedEmails(folder || Folders.INBOX, unified && !starredOnly, unreadOnly);
+	// Reuse server-side search so this virtual view includes stars in every folder.
+	const starredSearch = starredOnly ? `is:starred${unreadOnly ? " is:unread" : ""}` : "";
+	const starredQuery = useSearchEmails(mailboxId, starredSearch, unified);
+	const activeQuery = starredOnly ? starredQuery : unified ? unifiedQuery : mailboxQuery;
 	const emailData = activeQuery.data;
 
 	const emails = useMemo(() => flattenEmailPages(emailData?.pages, mailboxId), [emailData, mailboxId]);
@@ -186,10 +197,11 @@ export default function EmailListRoute() {
 	const { data: folders = [] } = useFolders(mailboxId);
 
 	const folderName = useMemo(() => {
+		if (starredOnly) return "Starred";
 		const found = folders.find((f) => f.id === folder);
 		if (found) return found.name;
 		return folder ? folder.charAt(0).toUpperCase() + folder.slice(1) : "Inbox";
-	}, [folders, folder]);
+	}, [folders, folder, starredOnly]);
 
 	useEffect(() => {
 		prevFolderRef.current = identity;
@@ -221,7 +233,9 @@ export default function EmailListRoute() {
 	const handleRetry = () => {
 		// Restart a failed list at its first page rather than refetching every
 		// previously loaded page. Remounting the list also resets its scroll.
-		const queryKey = unified
+		const queryKey = starredOnly
+			? unified ? queryKeys.unifiedEmails.search(starredSearch) : queryKeys.search.infinite(mailboxId!, starredSearch)
+			: unified
 			? queryKeys.unifiedEmails.infinite(params.folder, unreadOnly)
 			: queryKeys.emails.infinite(mailboxId!, { ...params, threaded: "true" });
 		void queryClient.resetQueries({ queryKey, exact: true });
@@ -272,7 +286,7 @@ export default function EmailListRoute() {
 						</h1>
 						{emailData?.pages[0] && (
 							<span className={`${typeClass("caption")} block truncate tabular-nums text-muted-foreground`} role="status" aria-atomic="true">
-								{totalCount.toLocaleString("en-US")} {unified ? `message${totalCount === 1 ? "" : "s"}` : `conversation${totalCount === 1 ? "" : "s"}`}
+								{totalCount.toLocaleString("en-US")} {unified || starredOnly ? `message${totalCount === 1 ? "" : "s"}` : `conversation${totalCount === 1 ? "" : "s"}`}
 							</span>
 						)}
 					</div>
@@ -395,7 +409,7 @@ export default function EmailListRoute() {
 						) : activeQuery.isLoading ? (
 							<EmailListSkeleton />
 						) : unreadOnly ? (
-							<div className="px-6 py-24 text-center text-sm text-kumo-subtle">No unread emails</div>
+							<div className="px-6 py-24 text-center text-sm text-kumo-subtle">{starredOnly ? "No unread starred emails" : "No unread emails"}</div>
 						) : <FolderEmptyState folder={folder} onCompose={() => startCompose()} />}
 					</div>
 				)}
