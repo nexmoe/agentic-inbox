@@ -25,6 +25,7 @@ import MobileSidebarToggle from "~/components/MobileSidebarToggle";
 import MailSearch from "~/components/MailSearch";
 import MailAddressLine from "~/components/MailAddressLine";
 import VirtualMailList from "~/components/VirtualMailList";
+import EmailOpenStatus from "~/components/email-panel/EmailOpenStatus";
 import { flattenEmailPages } from "~/lib/email-pages";
 import { Tabs, TabsList, TabItem } from "@/components/ui/tabs";
 import { fontWeights } from "@/lib/font-weight";
@@ -344,6 +345,7 @@ export default function EmailListRoute() {
 												</span>
 												{snippet && <span className="text-kumo-subtle font-normal"> &mdash; {snippet}</span>}
 											</div>
+											{email.open_tracking && email.folder_id !== Folders.DRAFT && <EmailOpenStatus tracking={email.open_tracking} latestSent />}
 											{(email.thread_count ?? 1) > 1 && (
 												<span className="shrink-0 text-xs text-kumo-subtle bg-kumo-fill rounded-full px-1.5 py-0.5 font-medium">
 													{email.thread_count}

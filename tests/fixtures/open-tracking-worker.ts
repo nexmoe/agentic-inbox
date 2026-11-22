@@ -3,6 +3,10 @@ import { app } from "../../workers/index";
 import { MailboxDO as BaseMailboxDO } from "../../workers/durableObject";
 
 export class MailboxDO extends BaseMailboxDO {
+	async setEmailDate(id: string, date: string) {
+		this.ctx.storage.sql.exec("UPDATE emails SET date = ? WHERE id = ?", date, id);
+	}
+
 	async trackingRows() {
 		return [...this.ctx.storage.sql.exec("SELECT COUNT(*) AS count FROM email_tracking")][0].count;
 	}
@@ -30,6 +34,11 @@ export default {
 			return new Response(null, { status: 204 });
 		}
 		if (url.pathname === "/__calls") return Response.json(calls);
+		if (url.pathname === "/__date") {
+			const { id, date } = await request.json() as { id: string; date: string };
+			await stub.setEmailDate(id, date);
+			return new Response(null, { status: 204 });
+		}
 		if (url.pathname === "/__trackingRows") return Response.json(await stub.trackingRows());
 		if (url.pathname === "/__attachmentCount") return Response.json((await env.BUCKET.list({ prefix: "attachments/" })).objects.length);
 		const bindings = { ...env, POLICY_AUD: "test-policy", TEAM_DOMAIN: "https://access.example.com", EMAIL: {

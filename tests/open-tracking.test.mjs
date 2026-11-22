@@ -133,6 +133,38 @@ test("HEADs and automation do not count; concurrent reloads deduplicate and dist
 	} finally { await f.close(); }
 });
 
+test("lists expose open status for the latest sent message even when Inbox represents an incoming message", async () => {
+	const f = await fixture();
+	try {
+		const sent = await f.json("/api/v1/emails?folder=sent");
+		assert.deepEqual(sent.emails[0].open_tracking, {
+			emailId: "tracked", enabled: true, openCount: 0, firstOpenedAt: null, lastOpenedAt: null,
+		});
+		await f.fetch(pixel, { headers: { "user-agent": "Thunderbird/140.0", "cf-connecting-ip": "192.0.2.1" } });
+		const opened = (await f.json(`${base}?folder=sent&threaded=true`)).emails[0].open_tracking;
+		assert.equal(opened.openCount, 1);
+		assert.ok(opened.firstOpenedAt);
+		assert.equal((await f.json(`${base}/tracked`)).open_tracking.openCount, 1);
+		assert.equal((await f.json("/api/v1/mailboxes/team@example.com/threads/tracked"))[0].open_tracking.openCount, 1);
+		const replyResponse = await f.send("/original/reply");
+		assert.equal(replyResponse.status, 200);
+		const reply = await replyResponse.json();
+		const inbox = await f.json("/api/v1/emails?folder=inbox");
+		assert.equal(inbox.emails[0].id, "original", "Keep the latest Inbox representative");
+		assert.equal(inbox.emails[0].open_tracking.emailId, reply.id);
+		assert.equal(inbox.emails[0].open_tracking.enabled, true);
+		assert.equal(inbox.emails[0].open_tracking.openCount, 0);
+		const untrackedResponse = await f.send("/original/reply", { ...payload, trackOpens: false });
+		assert.equal(untrackedResponse.status, 200);
+		const untracked = await untrackedResponse.json();
+		assert.equal((await f.fetch("/__date", { method: "POST", body: JSON.stringify({ id: untracked.id, date: new Date(Date.now() + 60_000).toISOString() }) })).status, 204);
+		const latest = (await f.json("/api/v1/emails?folder=inbox")).emails[0].open_tracking;
+		assert.equal(latest.emailId, untracked.id, "An untracked latest reply must not inherit an older reply's status");
+		assert.equal(latest.enabled, false);
+		assert(!JSON.stringify(inbox).includes('"token"'));
+	} finally { await f.close(); }
+});
+
 test("failed or unconfigured tracking sends create no tracking rows and drafts keep the explicit choice", async () => {
 	const f = await fixture();
 	try {
