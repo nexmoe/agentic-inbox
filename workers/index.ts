@@ -175,7 +175,7 @@ app.get("/api/v1/emails", async (c) => {
 		const stub = c.env.MAILBOX.get(c.env.MAILBOX.idFromName(mailboxId));
 		const [emails, totalCount] = await Promise.all([
 			stub.getUnifiedEmails(folder, mailboxId, batchSize, before, unreadOnly),
-			stub.countEmails({ folder, unreadOnly }),
+			stub.countThreadedEmails(folder, unreadOnly),
 		]);
 		return { emails, totalCount };
 	});

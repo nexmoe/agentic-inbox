@@ -286,7 +286,7 @@ export default function EmailListRoute() {
 						</h1>
 						{emailData?.pages[0] && (
 							<span className={`${typeClass("caption")} block truncate tabular-nums text-muted-foreground`} role="status" aria-atomic="true">
-								{totalCount.toLocaleString("en-US")} {unified || starredOnly ? `message${totalCount === 1 ? "" : "s"}` : `conversation${totalCount === 1 ? "" : "s"}`}
+								{totalCount.toLocaleString("en-US")} {starredOnly ? `message${totalCount === 1 ? "" : "s"}` : `conversation${totalCount === 1 ? "" : "s"}`}
 							</span>
 						)}
 					</div>

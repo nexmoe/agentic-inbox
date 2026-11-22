@@ -1,23 +1,9 @@
 import type { UnifiedEmailCursor, UnifiedEmailPage } from "../../shared/unified-inbox";
+import { threadedEmailsQuery } from "./threaded-emails.ts";
 
 export function unifiedEmailsQuery(folder: string, mailboxId: string, rawLimit: number, cursor?: UnifiedEmailCursor, unreadOnly = false) {
 	const limit = Math.min(Math.max(Math.floor(rawLimit), 1), 51);
-	const conditions = ["folder_id = ?"];
-	const params: (string | number)[] = [folder];
-	if (unreadOnly) conditions.push("read = 0");
-	if (cursor) {
-		const sameDate = mailboxId > cursor.mailboxId ? "1" : mailboxId < cursor.mailboxId ? "0" : "id > ?";
-		conditions.push(`(COALESCE(date, '') < ? OR (COALESCE(date, '') = ? AND (${sameDate})))`);
-		params.push(cursor.date, cursor.date);
-		if (mailboxId === cursor.mailboxId) params.push(cursor.id);
-	}
-	return {
-		sql: `SELECT id, subject, ai_title, sender, recipient, cc, bcc, date, read, starred, in_reply_to,
-		 email_references, thread_id, folder_id, SUBSTR(body, 1, 300) AS snippet
-		 FROM emails WHERE ${conditions.join(" AND ")}
-		 ORDER BY COALESCE(date, '') DESC, id ASC LIMIT ?`,
-		params: [...params, limit],
-	};
+	return threadedEmailsQuery(folder, limit, unreadOnly, { mailboxId, cursor });
 }
 
 export function decodeUnifiedCursor(value: string, folder: string, unreadOnly = false): UnifiedEmailCursor {
