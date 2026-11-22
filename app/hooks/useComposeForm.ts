@@ -54,7 +54,7 @@ const EMPTY_FIELDS: ComposeFormFields = {
 	showCcBcc: false,
 	subject: "",
 	body: "",
-	trackOpens: false,
+	trackOpens: true,
 };
 
 function getPrefixedSubject(subject: string, prefix: "Re" | "Fwd") {
@@ -173,6 +173,7 @@ export function useComposeForm(mailboxId?: string, _folder?: string) {
 	const { composeOptions, closePanel, closeCompose } = useUIStore();
 	const { data: currentMailbox } = useMailbox(mailboxId);
 	const { data: config } = useQuery({ queryKey: queryKeys.config, queryFn: () => api.getConfig() });
+	const trackingAvailable = config?.openTrackingAvailable ?? false;
 	const sendEmailMutation = useSendEmail();
 	const saveDraftMutation = useSaveDraft();
 	const replyMutation = useReplyToEmail();
@@ -185,7 +186,7 @@ export function useComposeForm(mailboxId?: string, _folder?: string) {
 	const [showCcBcc, setShowCcBcc] = useState(false);
 	const [subject, setSubject] = useState("");
 	const [body, setBody] = useState("");
-	const [trackOpens, setTrackOpens] = useState(false);
+	const [trackOpens, setTrackOpens] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 	const [isSavingDraft, setIsSavingDraft] = useState(false);
 	const [isSending, setIsSending] = useState(false);
@@ -227,7 +228,7 @@ export function useComposeForm(mailboxId?: string, _folder?: string) {
 				bcc: bcc || undefined,
 				subject,
 				body,
-				trackOpens,
+				trackOpens: trackingAvailable && trackOpens,
 				in_reply_to: composeOptions.originalEmail?.id || composeOptions.draftEmail?.in_reply_to || undefined,
 				thread_id: composeOptions.originalEmail?.thread_id || composeOptions.draftEmail?.thread_id || undefined,
 				draft_id: composeOptions.draftEmail?.id || undefined,
@@ -258,7 +259,7 @@ export function useComposeForm(mailboxId?: string, _folder?: string) {
 			subject,
 			html: body,
 			text: htmlToPlainText(body),
-			trackOpens,
+			trackOpens: trackingAvailable && trackOpens,
 		};
 		const draftId = composeOptions.draftEmail?.id; const mode = composeOptions.mode; const originalId = composeOptions.originalEmail?.id || composeOptions.draftEmail?.in_reply_to;
 		setIsSending(true); toastManager.add({ title: "Sending email..." });
@@ -273,5 +274,5 @@ export function useComposeForm(mailboxId?: string, _folder?: string) {
 		finally { setIsSending(false); }
 	};
 
-	return { to, setTo, cc, setCc, bcc, setBcc, showCcBcc, setShowCcBcc, subject, setSubject, body, setBody, trackOpens, setTrackOpens, trackingAvailable: config?.openTrackingAvailable ?? false, error, setError, isSavingDraft, isSending, formTitle, handleSaveDraft, handleSend, closeCompose, closePanel };
+	return { to, setTo, cc, setCc, bcc, setBcc, showCcBcc, setShowCcBcc, subject, setSubject, body, setBody, trackOpens: trackingAvailable && trackOpens, setTrackOpens, trackingAvailable, error, setError, isSavingDraft, isSending, formTitle, handleSaveDraft, handleSend, closeCompose, closePanel };
 }

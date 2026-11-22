@@ -131,7 +131,7 @@ Mail lists and search results use infinite virtual scrolling instead of page but
 
 ### Outgoing open tracking
 
-Enable **Track opens** in the composer to attach a unique 1×1 image to a new message, reply, or forward. It is off by default, and saved drafts retain the choice. The sent-message panel shows the open count and first/last opening times; use its refresh button or refocus the app to update them. Agent sends remain untracked. The sender's stored copy contains no pixel.
+**Track opens** starts on for new messages, replies, and forwards when tracking is configured. Turn it off in the composer for an individual message; saved drafts retain the choice. Tracking attaches a unique 1×1 image, and the sent-message panel shows the open count and first/last opening times. Use its refresh button or refocus the app to update them. Agent sends remain untracked. The sender's stored copy contains no pixel.
 
 Set `trackingOrigin` in `.cloudflare/deployment.json` to a public HTTPS origin, such as `https://agentic-inbox.<your-subdomain>.workers.dev`. The legacy Wrangler variable is `OPEN_TRACKING_ORIGIN`. Only `GET`/`HEAD /pixel/:mailboxId/:token.gif` is public; all mailbox pages, APIs, and tracking statistics still require Access. The origin must serve this Worker without an Access challenge. If you use an Access-protected custom domain instead, configure a bypass application for `/pixel/*` only. An empty origin disables the composer toggle; an API request with `trackOpens: true` then fails before sending.
 
