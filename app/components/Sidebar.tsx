@@ -10,28 +10,31 @@ import {
 	PaperPlaneTiltIcon,
 	PencilSimpleIcon,
 	PlusIcon,
+	StarIcon,
 	TrashIcon,
 	TrayIcon,
 } from "@phosphor-icons/react";
 import { useMemo, useState } from "react";
 import { NavLink } from "react-router";
-import { Folders, SYSTEM_FOLDER_IDS } from "shared/folders";
+import { Folders, STARRED_VIEW_ID, SYSTEM_FOLDER_IDS } from "shared/folders";
 import { useCreateFolder, useFolders } from "~/queries/folders";
 import Header from "~/components/Header";
 import MailboxSelector from "~/components/MailboxSelector";
 import { useUIStore } from "~/hooks/useUIStore";
 import { useActiveMailboxId } from "~/hooks/useActiveMailbox";
 
-const FOLDER_ICONS: Record<string, React.ReactNode> = {
+const NAVIGATION_ICONS: Record<string, React.ReactNode> = {
 	[Folders.INBOX]: <TrayIcon size={18} weight="regular" />,
+	[STARRED_VIEW_ID]: <StarIcon size={18} weight="regular" />,
 	[Folders.SENT]: <PaperPlaneTiltIcon size={18} weight="regular" />,
 	[Folders.DRAFT]: <FileIcon size={18} weight="regular" />,
 	[Folders.ARCHIVE]: <ArchiveIcon size={18} weight="regular" />,
 	[Folders.TRASH]: <TrashIcon size={18} weight="regular" />,
 };
 
-const SYSTEM_FOLDER_LINKS = [
+const NAVIGATION_LINKS = [
 	{ id: Folders.INBOX, label: "Inbox" },
+	{ id: STARRED_VIEW_ID, label: "Starred" },
 	{ id: Folders.SENT, label: "Sent" },
 	{ id: Folders.DRAFT, label: "Drafts" },
 	{ id: Folders.ARCHIVE, label: "Archive" },
@@ -128,13 +131,13 @@ export default function Sidebar({ unified = false }: { unified?: boolean }) {
 
 			{/* Navigation */}
 			<nav className="flex-1 overflow-y-auto px-3 space-y-0.5">
-				{SYSTEM_FOLDER_LINKS.map((folder) => (
+				{NAVIGATION_LINKS.map((folder) => (
 					<FolderLink
 						key={folder.id}
 						to={unified ? `/all/emails/${folder.id}` : `/mailbox/${mailboxId}/emails/${folder.id}`}
-						icon={FOLDER_ICONS[folder.id]}
+						icon={NAVIGATION_ICONS[folder.id]}
 						label={folder.label}
-						unreadCount={unified ? undefined : getUnreadCount(folder.id)}
+						unreadCount={unified || folder.id === STARRED_VIEW_ID ? undefined : getUnreadCount(folder.id)}
 						onClick={handleNavClick}
 					/>
 				))}

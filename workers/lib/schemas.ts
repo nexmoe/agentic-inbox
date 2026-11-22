@@ -30,6 +30,7 @@ export interface EmailMetadata {
 	thread_id?: string | null;
 	folder_id?: string | null;
 	snippet?: string | null;
+	track_opens?: boolean;
 }
 
 export interface EmailFull extends EmailMetadata {
@@ -85,6 +86,7 @@ export const SendEmailRequestSchema = z
 		in_reply_to: z.string().optional(),
 		references: z.array(z.string()).optional(),
 		thread_id: z.string().optional(),
+		trackOpens: z.boolean().optional(),
 	})
 	.refine((data) => data.html || data.text, {
 		message: "Either 'html' or 'text' must be provided",

@@ -127,6 +127,7 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 				subject: target.subject || "(no subject)",
 				html: target.body || "",
 				text: target.body ? target.body.replace(/<[^>]*>/g, "").trim() : "",
+				trackOpens: !!target.track_opens,
 			};
 			if (originalEmail) await replyMut.mutateAsync({ mailboxId, emailId: originalEmail.id, email: emailData }); else await sendEmailMut.mutateAsync({ mailboxId, email: emailData });
 			await deleteEmailMut.mutateAsync({ mailboxId, id: target.id });
@@ -183,6 +184,7 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 					messageCount={allMessages.length}
 					showThreadCount={hasThread}
 					email={hasThread ? undefined : email}
+					mailboxId={mailboxId}
 				/>
 				{!isDraftFolder && email.folder_id !== Folders.DRAFT && (
 					<EmailSummaryCard

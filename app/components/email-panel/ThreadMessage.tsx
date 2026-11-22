@@ -20,6 +20,7 @@ import {
 	stripHtml,
 } from "~/lib/utils";
 import type { Email } from "~/types";
+import EmailOpenTracking from "./EmailOpenTracking";
 
 interface ThreadMessageProps {
 	email: Email;
@@ -111,6 +112,7 @@ export default function ThreadMessage({
 								{isDraft && <Badge variant="outline">Draft</Badge>}
 							</div>
 							<div className="text-xs text-kumo-subtle">To: {email.recipient}</div>
+							{mailboxId && !isDraft && email.track_opens && <EmailOpenTracking mailboxId={mailboxId} emailId={email.id} />}
 						</div>
 					</div>
 					<div className="flex items-center gap-1 shrink-0">

@@ -9,6 +9,7 @@ import { useActiveMailboxId } from "~/hooks/useActiveMailbox";
 import { useComposeForm } from "~/hooks/useComposeForm";
 import RichTextEditor from "./RichTextEditor";
 import { useUIStore } from "~/hooks/useUIStore";
+import OpenTrackingToggle from "./OpenTrackingToggle";
 
 export default function ComposeEmail() {
 	const { folder } = useParams<{ folder: string }>();
@@ -29,6 +30,9 @@ export default function ComposeEmail() {
 		setSubject,
 		body,
 		setBody,
+		trackOpens,
+		setTrackOpens,
+		trackingAvailable,
 		error,
 		isSavingDraft,
 		isSending,
@@ -106,6 +110,7 @@ export default function ComposeEmail() {
 						<RichTextEditor value={body} onChange={setBody} />
 					</div>
 					<div className="flex justify-between items-center pt-2">
+						<div className="flex items-center gap-1">
 						<Button
 							type="button"
 							variant="ghost"
@@ -115,6 +120,8 @@ export default function ComposeEmail() {
 						>
 							Discard
 						</Button>
+						<OpenTrackingToggle checked={trackOpens} available={trackingAvailable} disabled={isSending || isSavingDraft} onChange={setTrackOpens} />
+						</div>
 						<div className="flex items-center gap-2">
 							<Button
 								type="button"

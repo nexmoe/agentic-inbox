@@ -30,6 +30,17 @@ export const emails = sqliteTable("emails", {
 	thread_id: text("thread_id"),
 	message_id: text("message_id"),
 	raw_headers: text("raw_headers"),
+	track_opens: integer("track_opens").notNull().default(0),
+});
+
+export const emailTracking = sqliteTable("email_tracking", {
+	email_id: text("email_id").primaryKey().references(() => emails.id, { onDelete: "cascade" }),
+	token: text("token").notNull().unique(),
+	sent_at: integer("sent_at").notNull(),
+	open_count: integer("open_count").notNull().default(0),
+	first_opened_at: integer("first_opened_at"),
+	last_opened_at: integer("last_opened_at"),
+	recent_clients: text("recent_clients").notNull().default("[]"),
 });
 
 export const attachments = sqliteTable("attachments", {

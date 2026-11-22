@@ -11,6 +11,7 @@ import { app as apiApp, receiveEmail } from "./index";
 import { deliverIncomingEmail } from "./lib/incoming-email";
 import { EmailMCP } from "./mcp";
 import type { Env } from "./types";
+import { openTrackingApp } from "./routes/open-tracking";
 
 export { MailboxDO } from "./durableObject";
 export { EmailAgent } from "./agent";
@@ -34,6 +35,9 @@ function getAccessUrls(teamDomain: string) {
 
 // Main app that wraps the API and adds React Router fallback
 const app = new Hono<{ Bindings: Env }>();
+
+// Image loads from recipients carry no Access session. Only this pixel route is public.
+app.route("/", openTrackingApp);
 
 // Cloudflare Access JWT validation middleware (production only)
 app.use("*", async (c, next) => {

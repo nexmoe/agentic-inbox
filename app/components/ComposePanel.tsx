@@ -8,6 +8,7 @@ import { useParams } from "react-router";
 import { useActiveMailboxId } from "~/hooks/useActiveMailbox";
 import { useComposeForm } from "~/hooks/useComposeForm";
 import RichTextEditor from "./RichTextEditor";
+import OpenTrackingToggle from "./OpenTrackingToggle";
 
 export default function ComposePanel() {
 	const { folder } = useParams<{ folder: string }>();
@@ -26,6 +27,9 @@ export default function ComposePanel() {
 		setSubject,
 		body,
 		setBody,
+		trackOpens,
+		setTrackOpens,
+		trackingAvailable,
 		error,
 		isSavingDraft,
 		isSending,
@@ -150,9 +154,12 @@ export default function ComposePanel() {
 				{/* Footer actions */}
 				<div className="mt-auto px-4 py-3 border-t border-kumo-line bg-kumo-fill/30 shrink-0 md:px-6">
 					<div className="flex items-center justify-between">
+						<div className="flex items-center gap-1">
 						<Button type="button" variant="ghost" size="sm" onClick={closeCompose} disabled={isSending}>
 							Discard
 						</Button>
+						<OpenTrackingToggle checked={trackOpens} available={trackingAvailable} disabled={isSending || isSavingDraft} onChange={setTrackOpens} />
+						</div>
 						<div className="flex items-center gap-2">
 							<Button
 								type="button"

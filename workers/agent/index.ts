@@ -277,6 +277,18 @@ function createEmailTools(env: Env, mailboxId: string) {
 // Use `any` for the Env generic to avoid type conflicts between the custom
 // SEND_EMAIL binding shape and the AIChatAgent constraint.  The actual env
 // is fully typed inside the tools via the closure.
+
+/**
+ * AUTO_DRAFT_REPLIES env: set to "true"/"1"/"yes"/"on" to auto-draft on inbound mail.
+ * Default (unset/false) skips auto-draft; summaries still run.
+ */
+function isAutoDraftRepliesEnabled(env: Env): boolean {
+	const v: unknown = env.AUTO_DRAFT_REPLIES;
+	if (v === true || v === 1) return true;
+	if (typeof v === "string") return ["1", "true", "yes", "on"].includes(v.trim().toLowerCase());
+	return false;
+}
+
 export class EmailAgent extends AIChatAgent<any> {
 	private summaryService?: EmailSummaryService;
 
@@ -424,9 +436,14 @@ export class EmailAgent extends AIChatAgent<any> {
 				await this.schedule(0, "summarizeReceivedEmail", { emailId: emailData.emailId }, {
 					retry: { maxAttempts: 1 },
 				});
-				this.ctx.waitUntil(this.handleNewEmail(emailData).catch((error) => {
-					console.error("Auto-draft failed:", (error as Error).name);
-				}));
+				// Auto-draft is off unless AUTO_DRAFT_REPLIES is explicitly enabled.
+				if (isAutoDraftRepliesEnabled(this.env as Env)) {
+					this.ctx.waitUntil(this.handleNewEmail(emailData).catch((error) => {
+						console.error("Auto-draft failed:", (error as Error).name);
+					}));
+				} else {
+					console.log("Skipping auto-draft (AUTO_DRAFT_REPLIES is off)");
+				}
 				return Response.json({ status: "scheduled" }, { status: 202 });
 			} catch (e) {
 				console.error("onNewEmail handler failed:", (e as Error).message);

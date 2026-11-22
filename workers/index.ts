@@ -25,6 +25,7 @@ import type { EmailSearchFilters } from "../shared/email-search";
 import type { Env } from "./types";
 import { requireMailbox, type MailboxContext } from "./lib/mailbox";
 import { resolveIncomingMailbox } from "./lib/incoming-recipient";
+import { prepareOpenTracking, trackingOrigin } from "./lib/open-tracking";
 
 type AppContext = Context<MailboxContext>;
 
@@ -45,6 +46,7 @@ const DraftBody = z.object({
 	in_reply_to: z.string().optional(),
 	thread_id: z.string().optional(),
 	draft_id: z.string().optional(),
+	trackOpens: z.boolean().optional(),
 });
 
 // -- Helpers --------------------------------------------------------
@@ -94,7 +96,7 @@ app.get("/api/v1/config", (c) => {
 	const domainsRaw = c.env.DOMAINS || "";
 	const domains = domainsRaw.split(",").map((d) => d.trim()).filter(Boolean);
 	const emailAddresses = c.env.EMAIL_ADDRESSES ?? [];
-	return c.json({ domains, emailAddresses });
+	return c.json({ domains, emailAddresses, openTrackingAvailable: !!trackingOrigin(c.env.OPEN_TRACKING_ORIGIN) });
 });
 
 // -- Mailboxes ------------------------------------------------------
@@ -208,6 +210,7 @@ app.post("/api/v1/mailboxes/:mailboxId/emails", async (c: AppContext) => {
 	const mailboxId = c.req.param("mailboxId")!;
 	const body = SendEmailRequestSchema.parse(await c.req.json());
 	const { to, cc, bcc, from, subject, html, text, attachments, in_reply_to, references, thread_id } = body;
+	const tracking = prepareOpenTracking(c.env.OPEN_TRACKING_ORIGIN, mailboxId, body.trackOpens, html, text);
 
 	let toStr: string, fromEmail: string, fromDomain: string;
 	try {
@@ -225,7 +228,7 @@ app.post("/api/v1/mailboxes/:mailboxId/emails", async (c: AppContext) => {
 
 	try {
 		await sendEmail(c.env.EMAIL, {
-			to, cc, bcc, from, subject, html, text,
+			to, cc, bcc, from, subject, html: tracking.html, text,
 			attachments: attachments?.map((att) => ({ content: att.content, filename: att.filename, type: att.type, disposition: att.disposition || "attachment", contentId: att.contentId })),
 			...(in_reply_to ? { headers: buildThreadingHeaders(in_reply_to, references || []) } : {}),
 		});
@@ -239,6 +242,7 @@ app.post("/api/v1/mailboxes/:mailboxId/emails", async (c: AppContext) => {
 		cc: cc ? (Array.isArray(cc) ? cc.join(", ") : cc).toLowerCase() : null,
 		bcc: bcc ? (Array.isArray(bcc) ? bcc.join(", ") : bcc).toLowerCase() : null,
 		date: new Date().toISOString(), body: html || text || "",
+		track_opens: !!tracking.token,
 		in_reply_to: in_reply_to || null, email_references: references ? JSON.stringify(references) : null,
 		thread_id: thread_id || in_reply_to || messageId, message_id: outgoingMessageId,
 		raw_headers: JSON.stringify([
@@ -249,14 +253,14 @@ app.post("/api/v1/mailboxes/:mailboxId/emails", async (c: AppContext) => {
 			{ key: "subject", value: subject }, { key: "date", value: new Date().toISOString() },
 			{ key: "message-id", value: `<${outgoingMessageId}>` },
 		]),
-	}, attachmentData);
+	}, attachmentData, tracking.token);
 
 	return c.json({ id: messageId, status: "sent" }, 200);
 });
 
 app.post("/api/v1/mailboxes/:mailboxId/drafts", async (c: AppContext) => {
 	const mailboxId = c.req.param("mailboxId")!;
-	const { to, cc, bcc, subject, body, in_reply_to, thread_id, draft_id } = DraftBody.parse(await c.req.json());
+	const { to, cc, bcc, subject, body, in_reply_to, thread_id, draft_id, trackOpens } = DraftBody.parse(await c.req.json());
 	const stub = c.var.mailboxStub;
 	if (draft_id) await stub.deleteEmail(draft_id); // not atomic — create-then-delete would be safer
 	const messageId = crypto.randomUUID();
@@ -265,6 +269,7 @@ app.post("/api/v1/mailboxes/:mailboxId/drafts", async (c: AppContext) => {
 		id: messageId, subject: subject || "", sender: mailboxId.toLowerCase(),
 		recipient: (to || "").toLowerCase(), cc: cc?.toLowerCase() || null, bcc: bcc?.toLowerCase() || null,
 		date: now, body, in_reply_to: in_reply_to || null, email_references: null,
+		track_opens: trackOpens ?? false,
 		thread_id: thread_id || in_reply_to || messageId,
 	}, []);
 	return c.json({ id: messageId, status: "draft", subject: subject || "", recipient: to || "", date: now }, 201);
@@ -276,6 +281,11 @@ app.get("/api/v1/mailboxes/:mailboxId/emails/:id", async (c: AppContext) => {
 	return new Response(JSON.stringify(email), {
 		headers: { "Content-Type": "application/json" },
 	});
+});
+
+app.get("/api/v1/mailboxes/:mailboxId/emails/:id/opens", async (c: AppContext) => {
+	const tracking = await c.var.mailboxStub.getEmailOpenTracking(c.req.param("id")!);
+	return tracking ? c.json(tracking, 200, { "Cache-Control": "no-store" }) : c.json({ error: "Email not found" }, 404);
 });
 
 app.post("/api/v1/mailboxes/:mailboxId/emails/:id/summary", async (c: AppContext) => {

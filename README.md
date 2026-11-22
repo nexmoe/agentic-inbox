@@ -69,7 +69,7 @@ The existing `EMAIL` binding handles new messages, replies, forwards, and MCP se
 - **Full email client** — Send and receive emails via Cloudflare Email Routing with a rich text composer, reply/forward threading, folder organization, search, and attachments
 - **Per-mailbox isolation** — Each mailbox runs in its own Durable Object with SQLite storage and R2 for attachments
 - **Built-in AI agent** — Side panel with 9 email tools for reading, searching, drafting, and organizing
-- **Auto-draft on new email** — Agent automatically reads inbound emails and generates draft replies, always requiring explicit confirmation before sending
+- **Auto-draft on new email** — Optional (`AUTO_DRAFT_REPLIES=true` / `autoDraftReplies` in `.cloudflare/deployment.json`); off by default. When enabled, the agent drafts replies on inbound mail and still requires explicit confirmation before sending
 - **Configurable and persistent** — Custom system prompts per mailbox, persistent chat history, streaming markdown responses, and tool call visibility
 
 ## Stack
@@ -128,6 +128,14 @@ The same structured response includes a title of at most 32 characters, saved se
 The search field follows the mailbox selector. **All mail** searches all mailboxes; choosing a mailbox restricts the same query to that mailbox. Search covers the subject, AI title, body, sender, recipient, CC, and BCC, with the existing advanced filters.
 
 Mail lists and search results use infinite virtual scrolling instead of page buttons. The unified APIs use bounded keyset pagination across mailbox Durable Objects, so new arrivals do not shift later pages. Individual mailbox APIs retain page-based requests behind the scrolling UI. Cloudflare Access protects the aggregate APIs under the same policy as individual mailboxes.
+
+### Outgoing open tracking
+
+Enable **Track opens** in the composer to attach a unique 1×1 image to a new message, reply, or forward. It is off by default, and saved drafts retain the choice. The sent-message panel shows the open count and first/last opening times; use its refresh button or refocus the app to update them. Agent sends remain untracked. The sender's stored copy contains no pixel.
+
+Set `trackingOrigin` in `.cloudflare/deployment.json` to a public HTTPS origin, such as `https://agentic-inbox.<your-subdomain>.workers.dev`. The legacy Wrangler variable is `OPEN_TRACKING_ORIGIN`. Only `GET`/`HEAD /pixel/:mailboxId/:token.gif` is public; all mailbox pages, APIs, and tracking statistics still require Access. The origin must serve this Worker without an Access challenge. If you use an Access-protected custom domain instead, configure a bypass application for `/pixel/*` only. An empty origin disables the composer toggle; an API request with `trackOpens: true` then fails before sending.
+
+Counts measure image fetches, not confirmed reads or individual recipients. Mail apps can block, cache, or preload images. Known scanners, Apple privacy fetches, prefetch requests, and loads within ten seconds of sending are excluded. Reloads from the same client within thirty seconds count once. Only aggregate counts, timestamps, and a per-message client hash are stored; raw IP addresses and user agents are not retained. Deleting a message deletes its tracking record.
 
 ### Email privacy
 

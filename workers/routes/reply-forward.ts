@@ -17,6 +17,7 @@ import {
 import { SendEmailRequestSchema } from "../lib/schemas";
 import { Folders } from "../../shared/folders";
 import type { MailboxContext } from "../lib/mailbox";
+import { prepareOpenTracking } from "../lib/open-tracking";
 
 type AppContext = Context<MailboxContext>;
 type RateLimitStub = { checkSendRateLimit: () => Promise<string | null> };
@@ -26,6 +27,7 @@ export async function handleReplyEmail(c: AppContext) {
 	const id = c.req.param("id") ?? "";
 	const body = SendEmailRequestSchema.parse(await c.req.json());
 	const { to, cc, bcc, from, subject, html, text, attachments } = body;
+	const tracking = prepareOpenTracking(c.env.OPEN_TRACKING_ORIGIN, mailboxId, body.trackOpens, html, text);
 
 	const stub = c.var.mailboxStub;
 	const rawOriginal = (await stub.getEmail(id)) as EmailFull | null;
@@ -57,7 +59,7 @@ export async function handleReplyEmail(c: AppContext) {
 
 	try {
 		await sendEmail(c.env.EMAIL, {
-			to, cc, bcc, from, subject, html, text,
+			to, cc, bcc, from, subject, html: tracking.html, text,
 			attachments: attachments?.map((att) => ({
 				content: att.content, filename: att.filename, type: att.type,
 				disposition: att.disposition, contentId: att.contentId,
@@ -80,6 +82,7 @@ export async function handleReplyEmail(c: AppContext) {
 			bcc: bcc ? (Array.isArray(bcc) ? bcc.join(", ") : bcc).toLowerCase() : null,
 			date: new Date().toISOString(),
 			body: html || text || "",
+			track_opens: !!tracking.token,
 			in_reply_to: originalMsgId,
 			email_references: JSON.stringify(references),
 			thread_id: thread_id,
@@ -97,6 +100,7 @@ export async function handleReplyEmail(c: AppContext) {
 			]),
 		},
 		attachmentData,
+		tracking.token,
 	);
 
 	await stub.markThreadRead(thread_id);
@@ -109,6 +113,7 @@ export async function handleForwardEmail(c: AppContext) {
 	const id = c.req.param("id") ?? "";
 	const body = SendEmailRequestSchema.parse(await c.req.json());
 	const { to, cc, bcc, from, subject, html, text, attachments } = body;
+	const tracking = prepareOpenTracking(c.env.OPEN_TRACKING_ORIGIN, mailboxId, body.trackOpens, html, text);
 
 	const stub = c.var.mailboxStub;
 	const rawOriginal = (await stub.getEmail(id)) as EmailFull | null;
@@ -139,7 +144,7 @@ export async function handleForwardEmail(c: AppContext) {
 
 	try {
 		await sendEmail(c.env.EMAIL, {
-			to, cc, bcc, from, subject, html, text,
+			to, cc, bcc, from, subject, html: tracking.html, text,
 			attachments: attachments?.map((att) => ({
 				content: att.content, filename: att.filename, type: att.type,
 				disposition: att.disposition, contentId: att.contentId,
@@ -161,6 +166,7 @@ export async function handleForwardEmail(c: AppContext) {
 			bcc: bcc ? (Array.isArray(bcc) ? bcc.join(", ") : bcc).toLowerCase() : null,
 			date: new Date().toISOString(),
 			body: html || text || "",
+			track_opens: !!tracking.token,
 			in_reply_to: null,
 			email_references: null,
 			thread_id: messageId,
@@ -176,6 +182,7 @@ export async function handleForwardEmail(c: AppContext) {
 			]),
 		},
 		attachmentData,
+		tracking.token,
 	);
 
 	return c.json({ id: messageId, status: "sent" }, 200);
