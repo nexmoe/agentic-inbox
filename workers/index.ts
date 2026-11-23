@@ -262,6 +262,7 @@ app.post("/api/v1/mailboxes/:mailboxId/drafts", async (c: AppContext) => {
 	const mailboxId = c.req.param("mailboxId")!;
 	const { to, cc, bcc, subject, body, in_reply_to, thread_id, draft_id, trackOpens } = DraftBody.parse(await c.req.json());
 	const stub = c.var.mailboxStub;
+	const previousDraft = draft_id && trackOpens === undefined ? await stub.getEmail(draft_id) : null;
 	if (draft_id) await stub.deleteEmail(draft_id); // not atomic — create-then-delete would be safer
 	const messageId = crypto.randomUUID();
 	const now = new Date().toISOString();
@@ -269,7 +270,7 @@ app.post("/api/v1/mailboxes/:mailboxId/drafts", async (c: AppContext) => {
 		id: messageId, subject: subject || "", sender: mailboxId.toLowerCase(),
 		recipient: (to || "").toLowerCase(), cc: cc?.toLowerCase() || null, bcc: bcc?.toLowerCase() || null,
 		date: now, body, in_reply_to: in_reply_to || null, email_references: null,
-		track_opens: trackOpens ?? false,
+		track_opens: trackOpens ?? previousDraft?.track_opens,
 		thread_id: thread_id || in_reply_to || messageId,
 	}, []);
 	return c.json({ id: messageId, status: "draft", subject: subject || "", recipient: to || "", date: now }, 201);

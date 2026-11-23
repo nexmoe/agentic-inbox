@@ -313,6 +313,7 @@ export async function toolUpdateDraft(
 			in_reply_to: oldDraft.in_reply_to || null,
 			email_references: oldDraft.email_references || null,
 			thread_id: oldDraft.thread_id || newDraftId,
+			track_opens: oldDraft.track_opens,
 		},
 		[],
 	);

@@ -124,7 +124,7 @@ function buildInitialComposeFields(
 			showCcBcc: Boolean(draft.cc || draft.bcc),
 			subject: draft.subject || "",
 			body: draft.body || "",
-			trackOpens: !!draft.track_opens,
+			trackOpens: draft.track_opens ?? true,
 		};
 	}
 
@@ -228,7 +228,7 @@ export function useComposeForm(mailboxId?: string, _folder?: string) {
 				bcc: bcc || undefined,
 				subject,
 				body,
-				trackOpens: trackingAvailable && trackOpens,
+				trackOpens,
 				in_reply_to: composeOptions.originalEmail?.id || composeOptions.draftEmail?.in_reply_to || undefined,
 				thread_id: composeOptions.originalEmail?.thread_id || composeOptions.draftEmail?.thread_id || undefined,
 				draft_id: composeOptions.draftEmail?.id || undefined,
@@ -259,7 +259,7 @@ export function useComposeForm(mailboxId?: string, _folder?: string) {
 			subject,
 			html: body,
 			text: htmlToPlainText(body),
-			trackOpens: trackingAvailable && trackOpens,
+			trackOpens: trackOpens ? undefined : false,
 		};
 		const draftId = composeOptions.draftEmail?.id; const mode = composeOptions.mode; const originalId = composeOptions.originalEmail?.id || composeOptions.draftEmail?.in_reply_to;
 		setIsSending(true); toastManager.add({ title: "Sending email..." });

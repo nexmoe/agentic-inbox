@@ -187,4 +187,8 @@ export const mailboxMigrations: Migration[] = [
 			);
 		`),
 	},
+	{
+		name: "11_enable_tracking_for_existing_drafts",
+		sql: txn(`UPDATE emails SET track_opens = 1 WHERE folder_id = 'draft' AND track_opens = 0;`),
+	},
 ];

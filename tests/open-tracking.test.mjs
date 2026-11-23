@@ -4,20 +4,21 @@ import { build } from "esbuild";
 import { Miniflare } from "miniflare";
 import { automatedOpen, openFingerprint, prepareOpenTracking, trackingOrigin } from "../workers/lib/open-tracking.ts";
 
-test("tracking is opt-in, uses a configured safe origin, and preserves message structure", () => {
+test("user can opt out of tracking and gets a signature only with a valid origin", () => {
 	assert.deepEqual(prepareOpenTracking(undefined, "team@example.com", false, "<p>Body</p>"), { html: "<p>Body</p>" });
+	assert.deepEqual(prepareOpenTracking(undefined, "team@example.com", undefined, "<p>Body</p>"), { html: "<p>Body</p>" });
 	for (const origin of [undefined, "javascript:alert(1)", "https://user:secret@example.com", "https://example.com/path", "https://example.com/?token=secret", "http://example.com"]) {
 		assert.equal(trackingOrigin(origin), null);
 		assert.throws(() => prepareOpenTracking(origin, "team@example.com", true, "<p>Body</p>"), error => error.status === 400);
 	}
 	assert.equal(trackingOrigin("http://localhost:3000"), "http://localhost:3000");
 	const body = '<html><body><p>Body</p></body></html>';
-	const tracked = prepareOpenTracking("https://pixels.example.com", "TEAM@example.com", true, body);
+	const tracked = prepareOpenTracking("https://mail.102417.xyz", "TEAM@example.com", true, body);
 	assert.match(tracked.token, /^[\w-]{43}$/);
-	assert(tracked.html.startsWith("<html><body><p>Body</p><img "));
+	assert(tracked.html.startsWith("<html><body><p>Body</p>"));
 	assert(tracked.html.endsWith("</body></html>"));
-	assert(tracked.html.includes(`/pixel/team%40example.com/${tracked.token}.gif`));
-	assert.notEqual(prepareOpenTracking("https://pixels.example.com", "team@example.com", true, body).token, tracked.token);
+	assert(tracked.html.includes(`https://mail.102417.xyz/mail-signatures/team%40example.com/${tracked.token}.png`));
+	assert.notEqual(prepareOpenTracking("https://mail.102417.xyz", "team@example.com", true, body).token, tracked.token);
 	const plain = prepareOpenTracking("https://pixels.example.com", "team@example.com", true, undefined, '<script>unsafe</script>\n& text');
 	assert(plain.html.includes("&lt;script&gt;unsafe&lt;/script&gt;"));
 	assert(!plain.html.includes("<script>"));
@@ -49,6 +50,7 @@ const bundle = await build({
 });
 const base = "/api/v1/mailboxes/team@example.com/emails";
 const pixel = `/pixel/team%40example.com/${"A".repeat(43)}.gif`;
+const signature = `/mail-signatures/team%40example.com/${"A".repeat(43)}.png`;
 const payload = { from: "team@example.com", to: "recipient@example.net", subject: "Tracked test", html: "<p>Test body</p>", text: "Test body", trackOpens: true };
 
 async function fixture(origin = "https://public.example.com") {
@@ -64,10 +66,12 @@ async function fixture(origin = "https://public.example.com") {
 	return { fetch, json, send, close: () => runtime.dispose() };
 }
 
-test("new mail, replies and forwards deliver one unique pixel while keeping Sent bodies clean", async () => {
-	const f = await fixture();
+test("user sends, replies and forwards with a visible sender-domain signature and a unique image URL", async () => {
+	// Given a mailbox with open tracking enabled on the public mail domain.
+	const f = await fixture("https://mail.102417.xyz");
 	try {
 		assert.equal((await f.json("/api/v1/config")).openTrackingAvailable, true);
+		// When the sender sends a new message, a reply and a forward.
 		for (const suffix of ["", "/original/reply", "/original/forward"]) {
 			const sent = await f.send(suffix); assert.equal(sent.status, 200);
 			const { id } = await sent.json();
@@ -77,21 +81,28 @@ test("new mail, replies and forwards deliver one unique pixel while keeping Sent
 			assert.deepEqual(await f.json(`${base}/${id}/opens`), { enabled: true, openCount: 0, firstOpenedAt: null, lastOpenedAt: null });
 			assert(!JSON.stringify(detail).includes("tracking_token"));
 		}
+		// Then each delivered HTML body has a visible signature with a different image URL.
 		const messages = await f.json("/__calls");
-		assert.equal(new Set(messages.map(message => message.html.match(/\/([\w-]{43})\.gif/)[1])).size, 3);
+		const logos = messages.map(message => message.html.match(/https:\/\/mail\.102417\.xyz\/mail-signatures\/team%40example\.com\/([\w-]{43})\.png/)?.[0]);
+		assert(logos.every(Boolean));
+		assert.equal(new Set(logos).size, 3);
 		for (const message of messages) {
 			assert.equal((message.html.match(/<img /g) ?? []).length, 1);
 			assert.equal(message.text, payload.text);
-			assert(message.html.includes("https://public.example.com/pixel/"));
+			assert.match(message.html, /<img [^>]*width="32"[^>]*height="32"/);
+			assert.match(message.html, />example\.com<\/span>/);
+			assert.doesNotMatch(message.html, /opacity\s*:\s*0|display\s*:\s*none/);
 		}
 		assert.equal((await f.send("", { ...payload, trackOpens: false })).status, 200);
 		assert.equal((await f.json("/__calls")).at(-1).html, payload.html);
 	} finally { await f.close(); }
 });
 
-test("public pixels remain outside Access while mailbox APIs and open statistics stay protected", async () => {
+test("user loads the signature and legacy pixel without signing in while mailbox APIs stay protected", async () => {
+	// Given a delivered signature and a previously delivered pixel.
 	const f = await fixture();
 	try {
+		// When the recipient requests the images and attempts to access the mailbox.
 		const response = await f.fetch(pixel);
 		assert.equal(response.status, 200);
 		assert.equal(response.headers.get("content-type"), "image/gif");
@@ -103,10 +114,23 @@ test("public pixels remain outside Access while mailbox APIs and open statistics
 			const unknown = await f.fetch(path); assert.equal(unknown.status, 200);
 			assert.deepEqual(new Uint8Array(await unknown.arrayBuffer()), bytes);
 		}
+		// Then anonymous image loads succeed and all mailbox requests still require authentication.
+		const logo = await f.fetch(signature);
+		assert.equal(logo.status, 200);
+		assert.equal(logo.headers.get("content-type"), "image/png");
+		assert.match(logo.headers.get("cache-control"), /no-store/);
+		const png = Buffer.from(await logo.arrayBuffer());
+		assert.equal(png.subarray(0, 8).toString("hex"), "89504e470d0a1a0a");
+		assert.equal(png.readUInt32BE(16), 64);
+		assert.equal(png.readUInt32BE(20), 64);
+		const branded = await f.fetch(signature.replace("example.com", "lmspeed.net"));
+		assert.equal(branded.status, 200);
+		assert.notDeepEqual(Buffer.from(await branded.arrayBuffer()), png);
 		for (const path of ["/", "/api/v1/config", `${base}/tracked/opens`, `${base}/tracked`]) {
 			assert.equal((await f.fetch("/__protected" + path)).status, 403);
 		}
 		assert.equal((await f.fetch(pixel, { method: "POST" })).status, 403);
+		assert.equal((await f.fetch(signature, { method: "POST" })).status, 403);
 	} finally { await f.close(); }
 });
 
@@ -114,10 +138,10 @@ test("HEADs and automation do not count; concurrent reloads deduplicate and dist
 	const f = await fixture();
 	try {
 		const headers = { "user-agent": "Thunderbird/140.0", "cf-connecting-ip": "192.0.2.1" };
-		const head = await f.fetch(pixel, { method: "HEAD", headers }); assert.equal(head.status, 200); assert.equal(await head.text(), "");
+		const head = await f.fetch(signature, { method: "HEAD", headers }); assert.equal(head.status, 200); assert.equal(await head.text(), "");
 		for (const extra of [{ "user-agent": "Mozilla/5.0" }, { purpose: "prefetch" }, { "sec-purpose": "prefetch;prerender" }, { "user-agent": "Proofpoint" }]) await f.fetch(pixel, { headers: { ...headers, ...extra } });
 		assert.equal((await f.json(`${base}/tracked/opens`)).openCount, 0);
-		await Promise.all(Array.from({ length: 12 }, () => f.fetch(pixel, { headers })));
+		await Promise.all(Array.from({ length: 12 }, () => f.fetch(signature, { headers })));
 		const first = await f.json(`${base}/tracked/opens`);
 		assert.equal(first.openCount, 1); assert(first.firstOpenedAt); assert.equal(first.lastOpenedAt, first.firstOpenedAt);
 		await f.fetch(pixel, { headers: { ...headers, "user-agent": "Outlook/16.0" } });
@@ -186,4 +210,31 @@ test("failed or unconfigured tracking sends create no tracking rows and drafts k
 		assert.equal((await unconfigured.send()).status, 400);
 		assert.deepEqual(await unconfigured.json("/__calls"), []);
 	} finally { await unconfigured.close(); }
+});
+
+test("user reopens old and new drafts with tracking on by default and can save an explicit opt-out", async () => {
+	// Given a draft saved before tracking had an on-by-default setting.
+	const f = await fixture();
+	const saveDraft = async (body) => {
+		const response = await f.fetch("/api/v1/mailboxes/team@example.com/drafts", {
+			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ body: "Draft", ...body }),
+		});
+		assert.equal(response.status, 201);
+		return response.json();
+	};
+	try {
+		// When the user reopens the old draft and saves new drafts with and without opting out.
+		assert.equal((await f.fetch("/__upgradeDraft", { method: "POST" })).status, 204);
+		const defaultDraft = await saveDraft({});
+		const optedOut = await saveDraft({ trackOpens: false });
+		const edited = await saveDraft({ draft_id: optedOut.id });
+		const sent = await f.send("", { ...payload, trackOpens: undefined });
+		assert.equal(sent.status, 200);
+
+		// Then unset choices enable tracking, an explicit opt-out survives edits, and sending follows the default.
+		assert.equal((await f.json(`${base}/legacy-draft`)).track_opens, true);
+		assert.equal((await f.json(`${base}/${defaultDraft.id}`)).track_opens, true);
+		assert.equal((await f.json(`${base}/${edited.id}`)).track_opens, false);
+		assert.equal((await f.json(`${base}/${(await sent.json()).id}/opens`)).enabled, true);
+	} finally { await f.close(); }
 });
