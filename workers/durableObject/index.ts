@@ -683,7 +683,7 @@ export class MailboxDO extends DurableObject<Env> {
 					thread_id: email.thread_id ?? null,
 					message_id: email.message_id ?? null,
 					raw_headers: email.raw_headers ?? null,
-					track_opens: email.track_opens ? 1 : 0,
+					track_opens: (email.track_opens ?? (folderId === Folders.DRAFT)) ? 1 : 0,
 				})
 				.run();
 

@@ -26,7 +26,7 @@ function escapeHtml(value: string): string {
 	return value.replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]!);
 }
 
-/** Build only the delivered HTML. The sender's stored copy never contains the pixel. */
+/** Add the signature only to the delivered HTML so viewing Sent cannot trigger tracking. */
 export function prepareOpenTracking(
 	origin: string | undefined,
 	mailboxId: string,
@@ -34,19 +34,24 @@ export function prepareOpenTracking(
 	html: string | undefined,
 	text: string | undefined,
 ): { html: string | undefined; token?: string } {
-	if (!enabled) return { html };
+	if (enabled === false) return { html };
 	const publicOrigin = trackingOrigin(origin);
-	if (!publicOrigin) throw new HTTPException(400, {
-		res: Response.json({ error: "Open tracking is not configured for this installation. Turn off tracking or contact your administrator." }, { status: 400 }),
-	});
+	if (!publicOrigin) {
+		if (enabled === undefined) return { html };
+		throw new HTTPException(400, {
+			res: Response.json({ error: "Open tracking is not configured for this installation. Turn off tracking or contact your administrator." }, { status: 400 }),
+		});
+	}
+	const address = mailboxId.toLowerCase();
+	const domain = escapeHtml(address.slice(address.lastIndexOf("@") + 1));
 	const bytes = crypto.getRandomValues(new Uint8Array(32));
 	const token = btoa(String.fromCharCode(...bytes)).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
-	const url = `${publicOrigin}/pixel/${encodeURIComponent(mailboxId.toLowerCase())}/${token}.gif`;
-	const pixel = `<img src="${escapeHtml(url)}" alt="" width="1" height="1" style="width:1px;height:1px;border:0;opacity:0" referrerpolicy="no-referrer">`;
+	const url = `${publicOrigin}/mail-signatures/${encodeURIComponent(address)}/${token}.png`;
+	const signature = `<p style="margin:16px 0 0"><img src="${escapeHtml(url)}" alt="" width="32" height="32" style="vertical-align:middle" referrerpolicy="no-referrer"> <span style="vertical-align:middle">${domain}</span></p>`;
 	const content = html || `<div style="white-space:pre-wrap">${escapeHtml(text ?? "")}</div>`;
 	const closingBody = /<\/body\s*>/i.exec(content);
 	const offset = closingBody?.index ?? content.length;
-	return { token, html: content.slice(0, offset) + pixel + content.slice(offset) };
+	return { token, html: content.slice(0, offset) + signature + content.slice(offset) };
 }
 
 /** Treat early delivery scans and recognizable prefetches as automation, not reads. */

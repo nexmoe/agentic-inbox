@@ -36,7 +36,7 @@ function getAccessUrls(teamDomain: string) {
 // Main app that wraps the API and adds React Router fallback
 const app = new Hono<{ Bindings: Env }>();
 
-// Image loads from recipients carry no Access session. Only this pixel route is public.
+// Image loads from recipients carry no Access session.
 app.route("/", openTrackingApp);
 
 // Cloudflare Access JWT validation middleware (production only)

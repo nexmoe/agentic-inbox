@@ -1,6 +1,7 @@
 import production from "../../workers/app";
 import { app } from "../../workers/index";
 import { MailboxDO as BaseMailboxDO } from "../../workers/durableObject";
+import { applyMigrations, mailboxMigrations } from "../../workers/durableObject/migrations";
 
 export class MailboxDO extends BaseMailboxDO {
 	async setEmailDate(id: string, date: string) {
@@ -9,6 +10,15 @@ export class MailboxDO extends BaseMailboxDO {
 
 	async trackingRows() {
 		return [...this.ctx.storage.sql.exec("SELECT COUNT(*) AS count FROM email_tracking")][0].count;
+	}
+
+	async upgradeDraft() {
+		// Populate the pre-upgrade SQLite state before running the actual migrations.
+		const sql = this.ctx.storage.sql;
+		sql.exec("DELETE FROM d1_migrations WHERE name = '11_enable_tracking_for_existing_drafts'");
+		sql.exec(`INSERT INTO emails (id, folder_id, subject, body, track_opens)
+			VALUES ('legacy-draft', 'draft', 'Legacy draft', 'Draft', 0)`);
+		applyMigrations(sql, mailboxMigrations, this.ctx.storage);
 	}
 }
 
@@ -40,6 +50,10 @@ export default {
 			return new Response(null, { status: 204 });
 		}
 		if (url.pathname === "/__trackingRows") return Response.json(await stub.trackingRows());
+		if (url.pathname === "/__upgradeDraft") {
+			await stub.upgradeDraft();
+			return new Response(null, { status: 204 });
+		}
 		if (url.pathname === "/__attachmentCount") return Response.json((await env.BUCKET.list({ prefix: "attachments/" })).objects.length);
 		const bindings = { ...env, POLICY_AUD: "test-policy", TEAM_DOMAIN: "https://access.example.com", EMAIL: {
 			async send(message: unknown) {
@@ -52,7 +66,7 @@ export default {
 			url.pathname = url.pathname.slice("/__protected".length);
 			return production.fetch(new Request(url, request), bindings, ctx);
 		}
-		return url.pathname.startsWith("/pixel/")
+		return url.pathname.startsWith("/pixel/") || url.pathname.startsWith("/mail-signatures/")
 			? production.fetch(request, bindings, ctx)
 			: app.fetch(request, bindings, ctx);
 	},

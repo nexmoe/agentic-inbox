@@ -6,7 +6,7 @@ export default function OpenTrackingToggle({ checked, available, disabled, onCha
 }) {
 	return (
 		<Tooltip content={available
-			? "Track opens with a remote image. Mail apps may block it or load it automatically."
+			? "Track loads of the sender-domain signature logo. Mail apps may block it or load it automatically."
 			: "Open tracking is not configured for this installation."} asChild>
 			<span>
 				<Button type="button" variant={checked ? "secondary" : "ghost"} size="sm"

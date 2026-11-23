@@ -11,8 +11,8 @@ export default function EmailOpenStatus({ tracking, latestSent = false, loading 
 }) {
 	const count = tracking?.openCount ?? 0;
 	const label = unavailable ? "Open tracking unavailable" : loading ? "Loading open tracking…"
-		: !tracking?.enabled ? "Not tracked" : count === 0 ? "No opens recorded"
-		: count === 1 ? "Opened" : `Opened ${count} times`;
+		: !tracking?.enabled ? "Not tracked" : count === 0 ? "No image loads recorded"
+		: count === 1 ? "Image loaded" : `Image loaded ${count} times`;
 	const state = unavailable ? "unavailable" : loading ? "loading" : !tracking?.enabled ? "untracked" : count > 0 ? "opened" : "pending";
 	const timestamps = tracking?.firstOpenedAt && tracking.lastOpenedAt
 		? `First: ${new Date(tracking.firstOpenedAt).toLocaleString()}. Last: ${new Date(tracking.lastOpenedAt).toLocaleString()}. ` : "";
