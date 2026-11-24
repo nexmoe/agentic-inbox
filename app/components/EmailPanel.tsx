@@ -128,6 +128,7 @@ export default function EmailPanel({ emailId }: { emailId: string }) {
 				html: target.body || "",
 				text: target.body ? target.body.replace(/<[^>]*>/g, "").trim() : "",
 				trackOpens: target.track_opens === false ? false : undefined,
+				template: true,
 			};
 			if (originalEmail) await replyMut.mutateAsync({ mailboxId, emailId: originalEmail.id, email: emailData }); else await sendEmailMut.mutateAsync({ mailboxId, email: emailData });
 			await deleteEmailMut.mutateAsync({ mailboxId, id: target.id });

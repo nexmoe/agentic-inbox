@@ -1,4 +1,5 @@
 import { HTTPException } from "hono/http-exception";
+import { renderEmailTemplate } from "../../shared/email-template.ts";
 
 export const OPEN_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 export const OPEN_DEDUPLICATION_MS = 30_000;
@@ -26,6 +27,12 @@ function escapeHtml(value: string): string {
 	return value.replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]!);
 }
 
+export interface PrepareOpenTrackingOptions {
+	template?: boolean;
+	subject?: string;
+	senderName?: string;
+}
+
 /** Add the signature only to the delivered HTML so viewing Sent cannot trigger tracking. */
 export function prepareOpenTracking(
 	origin: string | undefined,
@@ -33,20 +40,47 @@ export function prepareOpenTracking(
 	enabled: boolean | undefined,
 	html: string | undefined,
 	text: string | undefined,
+	options?: PrepareOpenTrackingOptions,
 ): { html: string | undefined; token?: string } {
-	if (enabled === false) return { html };
+	const address = mailboxId.toLowerCase();
+	const useTemplate = Boolean(options?.template);
+	const renderUntrackedTemplate = () => ({
+		html: renderEmailTemplate({
+			subject: options?.subject,
+			senderName: options?.senderName,
+			senderEmail: address,
+			bodyHtml: html,
+			bodyText: text,
+			trackOpens: false,
+		}),
+	});
+
+	if (enabled === false) return useTemplate ? renderUntrackedTemplate() : { html };
 	const publicOrigin = trackingOrigin(origin);
 	if (!publicOrigin) {
-		if (enabled === undefined) return { html };
+		if (enabled === undefined) return useTemplate ? renderUntrackedTemplate() : { html };
 		throw new HTTPException(400, {
 			res: Response.json({ error: "Open tracking is not configured for this installation. Turn off tracking or contact your administrator." }, { status: 400 }),
 		});
 	}
-	const address = mailboxId.toLowerCase();
 	const domain = escapeHtml(address.slice(address.lastIndexOf("@") + 1));
 	const bytes = crypto.getRandomValues(new Uint8Array(32));
 	const token = btoa(String.fromCharCode(...bytes)).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
 	const url = `${publicOrigin}/mail-signatures/${encodeURIComponent(address)}/${token}.png`;
+	if (useTemplate) {
+		return {
+			token,
+			html: renderEmailTemplate({
+				subject: options?.subject,
+				senderName: options?.senderName,
+				senderEmail: address,
+				bodyHtml: html,
+				bodyText: text,
+				trackOpens: true,
+				logoUrl: url,
+			}),
+		};
+	}
 	const signature = `<p style="margin:16px 0 0"><img src="${escapeHtml(url)}" alt="" width="32" height="32" style="vertical-align:middle" referrerpolicy="no-referrer"> <span style="vertical-align:middle">${domain}</span></p>`;
 	const content = html || `<div style="white-space:pre-wrap">${escapeHtml(text ?? "")}</div>`;
 	const closingBody = /<\/body\s*>/i.exec(content);

@@ -4,15 +4,20 @@
 
 import { Banner, Button, Input } from "@cloudflare/kumo";
 import { FloppyDiskIcon, PaperPlaneTiltIcon, XIcon } from "@phosphor-icons/react";
+import { useState } from "react";
 import { useParams } from "react-router";
 import { useActiveMailboxId } from "~/hooks/useActiveMailbox";
 import { useComposeForm } from "~/hooks/useComposeForm";
+import EmailTemplatePreview from "./EmailTemplatePreview";
 import RichTextEditor from "./RichTextEditor";
 import OpenTrackingToggle from "./OpenTrackingToggle";
+
+type ComposeViewMode = "write" | "split" | "preview";
 
 export default function ComposePanel() {
 	const { folder } = useParams<{ folder: string }>();
 	const mailboxId = useActiveMailboxId();
+	const [viewMode, setViewMode] = useState<ComposeViewMode>("split");
 
 	const {
 		to,
@@ -30,6 +35,8 @@ export default function ComposePanel() {
 		trackOpens,
 		setTrackOpens,
 		trackingAvailable,
+		senderName,
+		senderEmail,
 		error,
 		isSavingDraft,
 		isSending,
@@ -46,7 +53,23 @@ export default function ComposePanel() {
 				<h2 className="text-base font-semibold text-kumo-default">
 					{formTitle}
 				</h2>
-				<div className="flex items-center gap-1">
+				<div className="flex items-center gap-2">
+					<div className="inline-flex rounded-lg border border-kumo-line bg-kumo-recessed p-0.5 text-xs">
+						{(["write", "split", "preview"] as const).map((mode) => (
+							<button
+								key={mode}
+								type="button"
+								onClick={() => setViewMode(mode)}
+								className={`px-2.5 py-1 rounded-md font-medium transition-colors ${
+									viewMode === mode
+										? "bg-kumo-base text-kumo-default shadow-xs"
+										: "text-kumo-subtle hover:text-kumo-default"
+								}`}
+							>
+								{mode === "write" ? "Write" : mode === "split" ? "Split" : "Preview"}
+							</button>
+						))}
+					</div>
 					<Button
 						variant="ghost"
 						shape="square"
@@ -143,11 +166,23 @@ export default function ComposePanel() {
 						</div>
 					</div>
 
-					<div className="border border-kumo-line rounded-md overflow-hidden bg-kumo-base">
-						<RichTextEditor
-							value={body}
-							onChange={setBody}
-						/>
+					<div className={viewMode === "split" ? "grid grid-cols-1 @[600px]:grid-cols-2 gap-4 items-stretch" : ""}>
+						{viewMode !== "preview" && (
+							<RichTextEditor
+								value={body}
+								onChange={setBody}
+							/>
+						)}
+						{viewMode !== "write" && (
+							<EmailTemplatePreview
+								subject={subject}
+								bodyHtml={body}
+								senderName={senderName}
+								senderEmail={senderEmail}
+								trackOpens={trackOpens}
+								trackingAvailable={trackingAvailable}
+							/>
+						)}
 					</div>
 				</div>
 

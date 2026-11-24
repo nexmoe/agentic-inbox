@@ -27,7 +27,12 @@ export async function handleReplyEmail(c: AppContext) {
 	const id = c.req.param("id") ?? "";
 	const body = SendEmailRequestSchema.parse(await c.req.json());
 	const { to, cc, bcc, from, subject, html, text, attachments } = body;
-	const tracking = prepareOpenTracking(c.env.OPEN_TRACKING_ORIGIN, mailboxId, body.trackOpens, html, text);
+	const senderName = typeof from === "string" ? undefined : from.name;
+	const tracking = prepareOpenTracking(c.env.OPEN_TRACKING_ORIGIN, mailboxId, body.trackOpens, html, text, {
+		template: body.template,
+		subject,
+		senderName,
+	});
 
 	const stub = c.var.mailboxStub;
 	const rawOriginal = (await stub.getEmail(id)) as EmailFull | null;
@@ -113,7 +118,12 @@ export async function handleForwardEmail(c: AppContext) {
 	const id = c.req.param("id") ?? "";
 	const body = SendEmailRequestSchema.parse(await c.req.json());
 	const { to, cc, bcc, from, subject, html, text, attachments } = body;
-	const tracking = prepareOpenTracking(c.env.OPEN_TRACKING_ORIGIN, mailboxId, body.trackOpens, html, text);
+	const senderName = typeof from === "string" ? undefined : from.name;
+	const tracking = prepareOpenTracking(c.env.OPEN_TRACKING_ORIGIN, mailboxId, body.trackOpens, html, text, {
+		template: body.template,
+		subject,
+		senderName,
+	});
 
 	const stub = c.var.mailboxStub;
 	const rawOriginal = (await stub.getEmail(id)) as EmailFull | null;
