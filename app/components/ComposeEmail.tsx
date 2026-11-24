@@ -4,16 +4,21 @@
 
 import { Banner, Button, Dialog, Input, Text } from "@cloudflare/kumo";
 import { FloppyDiskIcon, PaperPlaneTiltIcon } from "@phosphor-icons/react";
+import { useState } from "react";
 import { useParams } from "react-router";
 import { useActiveMailboxId } from "~/hooks/useActiveMailbox";
 import { useComposeForm } from "~/hooks/useComposeForm";
+import EmailTemplatePreview from "./EmailTemplatePreview";
 import RichTextEditor from "./RichTextEditor";
 import { useUIStore } from "~/hooks/useUIStore";
 import OpenTrackingToggle from "./OpenTrackingToggle";
 
+type ComposeViewMode = "write" | "split" | "preview";
+
 export default function ComposeEmail() {
 	const { folder } = useParams<{ folder: string }>();
 	const mailboxId = useActiveMailboxId();
+	const [viewMode, setViewMode] = useState<ComposeViewMode>("split");
 	
 	const { isComposeModalOpen, closeComposeModal } = useUIStore();
 
@@ -33,6 +38,8 @@ export default function ComposeEmail() {
 		trackOpens,
 		setTrackOpens,
 		trackingAvailable,
+		senderName,
+		senderEmail,
 		error,
 		isSavingDraft,
 		isSending,
@@ -104,10 +111,40 @@ export default function ComposeEmail() {
 						required
 					/>
 					<div>
-						<Text size="sm" DANGEROUS_className="font-medium mb-1.5 block">
-							Message
-						</Text>
-						<RichTextEditor value={body} onChange={setBody} />
+						<div className="flex items-center justify-between gap-2 mb-1.5">
+							<Text size="sm" DANGEROUS_className="font-medium block">
+								Message
+							</Text>
+							<div className="inline-flex rounded-lg border border-kumo-line bg-kumo-recessed p-0.5 text-xs">
+								{(["write", "split", "preview"] as const).map((mode) => (
+									<button
+										key={mode}
+										type="button"
+										onClick={() => setViewMode(mode)}
+										className={`px-2.5 py-0.5 rounded-md font-medium transition-colors ${
+											viewMode === mode
+												? "bg-kumo-base text-kumo-default shadow-xs"
+												: "text-kumo-subtle hover:text-kumo-default"
+										}`}
+									>
+										{mode === "write" ? "Write" : mode === "split" ? "Split" : "Preview"}
+									</button>
+								))}
+							</div>
+						</div>
+						<div className={viewMode === "split" ? "grid grid-cols-1 md:grid-cols-2 gap-3 items-stretch" : ""}>
+							{viewMode !== "preview" && <RichTextEditor value={body} onChange={setBody} />}
+							{viewMode !== "write" && (
+								<EmailTemplatePreview
+									subject={subject}
+									bodyHtml={body}
+									senderName={senderName}
+									senderEmail={senderEmail}
+									trackOpens={trackOpens}
+									trackingAvailable={trackingAvailable}
+								/>
+							)}
+						</div>
 					</div>
 					<div className="flex justify-between items-center pt-2">
 						<div className="flex items-center gap-1">

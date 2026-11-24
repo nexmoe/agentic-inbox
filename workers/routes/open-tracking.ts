@@ -47,6 +47,13 @@ function imageResponse(method: string, bytes: Uint8Array<ArrayBuffer>, contentTy
 	} });
 }
 
+openTrackingApp.on(["GET", "HEAD"], "/mail-signatures/preview/:file", (c) => {
+	const file = c.req.param("file").toLowerCase();
+	const domain = file.endsWith(".png") ? file.slice(0, -4) : file;
+	const png = atob(logos.get(domain) ?? signatureLogos.default);
+	return imageResponse(c.req.method, Uint8Array.from(png, (byte) => byte.charCodeAt(0)), "image/png");
+});
+
 openTrackingApp.on(["GET", "HEAD"], "/mail-signatures/:mailboxId/:file", async (c) => {
 	const mailboxId = c.req.param("mailboxId").toLowerCase();
 	await recordImageLoad(c, mailboxId, c.req.param("file"), ".png");

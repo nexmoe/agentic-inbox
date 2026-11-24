@@ -238,3 +238,47 @@ test("user reopens old and new drafts with tracking on by default and can save a
 		assert.equal((await f.json(`${base}/${(await sent.json()).id}/opens`)).enabled, true);
 	} finally { await f.close(); }
 });
+
+test("template mode integrates logo tracking when enabled and switches to static signature when disabled", async () => {
+	const f = await fixture("https://mail.102417.xyz");
+	try {
+		const trackedSend = await f.send("", {
+			from: { email: "team@example.com", name: "Nexmoe" },
+			to: "recipient@example.net",
+			subject: "Template tracked",
+			html: "<p>Hello template</p>",
+			text: "Hello template",
+			trackOpens: true,
+			template: true,
+		});
+		assert.equal(trackedSend.status, 200);
+		const trackedId = (await trackedSend.json()).id;
+
+		const untrackedSend = await f.send("", {
+			from: { email: "team@example.com", name: "Nexmoe" },
+			to: "recipient@example.net",
+			subject: "Template untracked",
+			html: "<p>Hello template</p>",
+			text: "Hello template",
+			trackOpens: false,
+			template: true,
+		});
+		assert.equal(untrackedSend.status, 200);
+
+		const messages = await f.json("/__calls");
+		const trackedHtml = messages[0].html;
+		const untrackedHtml = messages[1].html;
+		assert.match(trackedHtml, /data-email-template="default"/);
+		assert.match(trackedHtml, /data-track-state="tracked"/);
+		assert.match(trackedHtml, /https:\/\/mail\.102417\.xyz\/mail-signatures\/team%40example\.com\/[\w-]{43}\.png/);
+		assert.match(untrackedHtml, /data-email-template="default"/);
+		assert.match(untrackedHtml, /data-track-state="untracked"/);
+		assert.doesNotMatch(untrackedHtml, /<img\b/i);
+
+		// Preview endpoint serves the domain PNG without recording an open event.
+		const preview = await f.fetch("/mail-signatures/preview/nexmoe.com.png");
+		assert.equal(preview.status, 200);
+		assert.equal(preview.headers.get("content-type"), "image/png");
+		assert.equal((await f.json(`${base}/${trackedId}/opens`)).openCount, 0);
+	} finally { await f.close(); }
+});

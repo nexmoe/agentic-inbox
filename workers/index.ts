@@ -210,7 +210,12 @@ app.post("/api/v1/mailboxes/:mailboxId/emails", async (c: AppContext) => {
 	const mailboxId = c.req.param("mailboxId")!;
 	const body = SendEmailRequestSchema.parse(await c.req.json());
 	const { to, cc, bcc, from, subject, html, text, attachments, in_reply_to, references, thread_id } = body;
-	const tracking = prepareOpenTracking(c.env.OPEN_TRACKING_ORIGIN, mailboxId, body.trackOpens, html, text);
+	const senderName = typeof from === "string" ? undefined : from.name;
+	const tracking = prepareOpenTracking(c.env.OPEN_TRACKING_ORIGIN, mailboxId, body.trackOpens, html, text, {
+		template: body.template,
+		subject,
+		senderName,
+	});
 
 	let toStr: string, fromEmail: string, fromDomain: string;
 	try {
